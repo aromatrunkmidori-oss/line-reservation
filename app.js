@@ -419,8 +419,9 @@ async function onDateNext() {
 
   try {
     const res = await apiGet('getAvailableSlots', {
-      date:     state.form.date,
-      duration: state.form.duration,
+      date:        state.form.date,
+      duration:    state.form.duration,
+      serviceType: state.form.serviceType,
     });
     state.ui.availableSlots = res;
   } catch (err) {
@@ -538,15 +539,6 @@ function renderStep6() {
           <span class="info-key">お名前</span>
           <span class="info-value">${state.customer.name}</span>
         </div>
-        <div class="info-row">
-          <span class="info-key">電話番号</span>
-          <span class="info-value">${state.customer.phone || '未登録'}</span>
-        </div>
-        ${f.serviceType === '出張' ? `
-        <div class="info-row">
-          <span class="info-key">訪問先住所</span>
-          <span class="info-value">${state.customer.address || '未登録'}</span>
-        </div>` : ''}
         <button class="edit-toggle" onclick="startEditing()">編集する</button>
       </div>
       ${prevKarte ? `
@@ -558,7 +550,6 @@ function renderStep6() {
   }
 
   const nameVal    = f.name    || (isReturning ? state.customer.name    : '');
-  const phoneVal   = f.phone   || (isReturning ? state.customer.phone   : '');
   const addressVal = f.address || (isReturning ? state.customer.address : '');
 
   return `
@@ -572,19 +563,13 @@ function renderStep6() {
           placeholder="山田 花子" value="${nameVal}"
           oninput="state.form.name = this.value">
       </div>
-      <div class="form-group">
-        <label class="form-label">電話番号<span class="required">必須</span></label>
-        <input class="form-input" type="tel" id="input-phone"
-          placeholder="090-1234-5678" value="${phoneVal}"
-          oninput="state.form.phone = this.value">
-      </div>
       ${f.serviceType === '出張' ? `
       <div class="form-group" style="margin-bottom:0">
         <label class="form-label">訪問先住所<span class="required">必須</span></label>
         <input class="form-input" type="text" id="input-address"
           placeholder="東京都渋谷区〇〇1-2-3" value="${addressVal}"
           oninput="state.form.address = this.value">
-        <p class="form-hint">当日伺う住所をご入力ください</p>
+        ${isReturning ? `<p class="form-hint">前回の住所を引き継いでいます。変更がある場合はご修正ください。</p>` : `<p class="form-hint">当日伺う住所をご入力ください</p>`}
       </div>` : ''}
     </div>`;
 }
@@ -592,7 +577,6 @@ function renderStep6() {
 function startEditing() {
   state.form.isEditing = true;
   state.form.name      = state.customer?.name    || '';
-  state.form.phone     = state.customer?.phone   || '';
   state.form.address   = state.customer?.address || '';
   render();
 }
@@ -668,17 +652,11 @@ async function submitReservation() {
   const f           = state.form;
   const isReturning = state.customer?.exists;
   const nameVal     = f.name    || (isReturning && !f.isEditing ? state.customer?.name    : '');
-  const phoneVal    = f.phone   || (isReturning && !f.isEditing ? state.customer?.phone   : '');
   const addressVal  = f.address || (isReturning && !f.isEditing ? state.customer?.address : '');
 
   if (!nameVal.trim()) {
     showToast('お名前を入力してください');
     document.getElementById('input-name')?.focus();
-    return;
-  }
-  if (!phoneVal.trim()) {
-    showToast('電話番号を入力してください');
-    document.getElementById('input-phone')?.focus();
     return;
   }
   if (f.serviceType === '出張' && !addressVal.trim()) {
@@ -701,7 +679,6 @@ async function submitReservation() {
       date:         f.date,
       startTime:    f.timeSlot,
       address:      addressVal.trim(),
-      phone:        phoneVal.trim(),
     });
 
     state.reservation = result.reservation;
