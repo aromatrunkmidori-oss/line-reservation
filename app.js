@@ -34,7 +34,7 @@ const DURATIONS = [60, 90, 120, 150, 180];
 
 const ICONS = {
   store: `<svg width="52" height="52" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-    <path d="M12 3L2 9v12h7v-7h6v7h7V9L12 3zm5 16h-3v-6H10v6H7V9.8l5-3.33 5 3.33V19z"/>
+    <path d="M20 4H4v2l-2 5h2v7c0 .55.45 1 1 1h5v-4h4v4h5c.55 0 1-.45 1-1v-7h2L20 6V4zm-5 7h-2V9h2v2zm-4 0H9V9h2v2z"/>
   </svg>`,
   car: `<svg width="52" height="52" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
     <path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z"/>
@@ -531,11 +531,11 @@ function renderMobileConfirm() {
   const surcharge = calcMidnightSurcharge(f.timeSlot, f.duration);
   const total     = basePrice + surcharge;
 
-  // 深夜料金の内訳（何ブロック分か）
-  const [h, m]   = f.timeSlot.split(':').map(Number);
-  const endMin   = h * 60 + m + f.duration;
-  const midMin   = 24 * 60;
-  const blocks   = surcharge > 0 ? Math.ceil((endMin - midMin) / 30) : 0;
+  // 深夜料金の内訳（24:00を超えた分数）
+  const [h, m]       = f.timeSlot.split(':').map(Number);
+  const endMin       = h * 60 + m + f.duration;
+  const midMin       = 24 * 60;
+  const overMin      = surcharge > 0 ? endMin - midMin : 0;
 
   const surchargeRow = surcharge > 0 ? `
     <div class="summary-row">
@@ -543,7 +543,7 @@ function renderMobileConfirm() {
       <span class="summary-value" style="color:var(--accent)">
         +${formatPrice(surcharge)}<br>
         <span style="font-size:11px;font-weight:400;color:var(--text-secondary)">
-          （24:00超 ${blocks}ブロック × ¥500）
+          （24:00超 ${overMin}分）
         </span>
       </span>
     </div>` : '';
@@ -638,12 +638,21 @@ function renderMobileDuration() {
 }
 
 function selectDuration(el, min) {
+  // 選択済みをもう一度クリックしたら解除
+  if (state.form.duration === min) {
+    state.form.duration = null;
+    state.form.date     = '';
+    state.form.timeSlot = '';
+    state.ui.availableSlots = null;
+    render();
+    return;
+  }
   state.form.duration = min;
   state.form.date     = '';
   state.form.timeSlot = '';
   state.ui.availableSlots = null;
   renderButtons();
-  document.querySelectorAll('.duration-btn').forEach(e => e.classList.remove('selected'));
+  document.querySelectorAll('.course-item').forEach(e => e.classList.remove('selected'));
   el.classList.add('selected');
 }
 
