@@ -7,7 +7,19 @@
   <title>ご予約</title>
   <link rel="stylesheet" href="style.css">
   <!-- LIFF SDK -->
-  <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script>
+  window.liff = {
+    init:        () => Promise.resolve(),
+    isInClient:  () => true,
+    isLoggedIn:  () => true,
+    getProfile:  () => Promise.resolve({
+      userId:      'U_test_001',
+      displayName: 'テストユーザー',
+      pictureUrl:  '',
+    }),
+    closeWindow: () => alert('閉じる'),
+  };
+</script>
 </head>
 <body>
   <div id="app">
