@@ -6,8 +6,11 @@
   <meta name="theme-color" content="#00C300">
   <title>ご予約</title>
   <link rel="stylesheet" href="style.css">
-  <!-- LIFF SDK -->
-  <script>
+ <!-- LIFF SDK（本番用） -->
+<!-- <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script> -->
+
+<!-- LIFF モック（ローカルテスト用・本番前に上の行を戻してこちらをコメントアウト） -->
+<script>
   window.liff = {
     init:        () => Promise.resolve(),
     isInClient:  () => true,
