@@ -118,6 +118,13 @@ function addMinutes(timeStr, min) {
   return String(Math.floor(total/60)).padStart(2,'0') + ':' + String(total%60).padStart(2,'0');
 }
 
+function formatTime(timeStr) {
+  if (!timeStr) return '';
+  const [h, m] = timeStr.split(':').map(Number);
+  if (h >= 24) return '翌' + String(h - 24).padStart(2,'0') + ':' + String(m).padStart(2,'0');
+  return timeStr;
+}
+
 function isHoliday(dateStr, date, holidays) {
   const dayNames = ['日曜日','月曜日','火曜日','水曜日','木曜日','金曜日','土曜日'];
   return holidays.includes(dayNames[date.getDay()]) || holidays.includes(dateStr);
@@ -481,7 +488,7 @@ function renderStep5() {
     return `
       <button class="${cls}" ${onclick} ${!s.available ? 'disabled' : ''}>
         ${s.time}
-        <span class="slot-end">〜${end}</span>
+        <span class="slot-end">〜${formatTime(end)}</span>
       </button>`;
   }).join('');
 
@@ -524,7 +531,7 @@ function renderStep6() {
       </div>
       <div class="summary-row">
         <span class="summary-label">日時</span>
-        <span class="summary-value">${formatJapanese(f.date)}<br>${f.timeSlot}〜${f.endTime}</span>
+        <span class="summary-value">${formatJapanese(f.date)}<br>${f.timeSlot}〜${formatTime(f.endTime)}</span>
       </div>
     </div>`;
 
@@ -602,7 +609,7 @@ function renderDone() {
         </div>
         <div class="summary-row">
           <span class="summary-label">日時</span>
-          <span class="summary-value">${formatJapanese(r?.date || '')}<br>${r?.startTime || ''}〜${r?.endTime || ''}</span>
+          <span class="summary-value">${formatJapanese(r?.date || '')}<br>${r?.startTime || ''}〜${formatTime(r?.endTime || '')}</span>
         </div>
         <div class="summary-row">
           <span class="summary-label">種別</span>
