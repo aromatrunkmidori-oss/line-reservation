@@ -955,7 +955,7 @@ function renderDone() {
         </div>` : ''}
       </div>
       <button class="btn btn-primary" style="max-width:200px"
-        onclick="liff.closeWindow()">閉じる</button>
+        onclick="try{liff.closeWindow();}catch(e){window.history.back();}">閉じる</button>
     </div>`;
 }
 
