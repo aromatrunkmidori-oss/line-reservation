@@ -4,8 +4,38 @@
 // ⚙️ 設定（デプロイ後にここを編集してください）
 // ============================================================
 const CONFIG = {
-  GAS_URL: 'https://script.google.com/macros/s/https://script.google.com/macros/s/AKfycbzvp_61GStgXQxAH36eyyuSOXvT9OFZrLmqD9sQYBrDo1CyYQVINsvV7QztDHViv18nCg/exec/exec',
+  GAS_URL: 'https://script.google.com/macros/s/AKfycbzbI4xCzAPOoZAMR06t5kKZAQuvu3EUF7pBNiqPDN7DIvvj38odiJfwLWGxB9jG_7lj1A/exec',
   LIFF_ID: '2009742884-e9ueuqGE',
+};
+
+// ============================================================
+// 固定マスタ
+// ============================================================
+const COURSES = [
+  'もみほぐし',
+  'オイルトリートメント',
+  'もみほぐし＋オイルトリートメント',
+];
+
+const DURATIONS = [60, 90, 120, 150, 180];
+
+// SVGアイコン定義
+const ICONS = {
+  store: `<svg width="52" height="52" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+    <path d="M12 3L2 9v12h7v-7h6v7h7V9L12 3zm5 16h-3v-6H10v6H7V9.8l5-3.33 5 3.33V19z"/>
+  </svg>`,
+  car: `<svg width="52" height="52" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+    <path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z"/>
+  </svg>`,
+  hands: `<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+    <path d="M21 7c0-1.1-.9-2-2-2h-3V3c0-1.1-.9-2-2-2H4C2.9 1 2 1.9 2 3v11c0 1.1.9 2 2 2h2v2c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7zm-11 9H4V3h10v11H10zm9 2H8v-2h6V9h6v9z"/>
+  </svg>`,
+  calendar: `<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+    <path d="M20 3h-1V1h-2v2H7V1H5v2H4c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 18H4V8h16v13z"/>
+  </svg>`,
+  clock: `<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+    <path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67V7z"/>
+  </svg>`,
 };
 
 // ============================================================
@@ -13,24 +43,25 @@ const CONFIG = {
 // ============================================================
 const state = {
   phase:       'loading',   // loading | form | done | error
-  step:         1,          // 1〜5
+  step:         1,          // 1〜6
   errorMessage: '',
   lineUserId:   null,
   displayName:  '',
   pictureUrl:   '',
-  customer:     null,       // 顧客情報（APIレスポンス）
-  settings:     null,       // 公開設定（メニュー・営業時間等）
-  karte:        null,       // カルテ履歴
+  customer:     null,
+  settings:     null,
+  karte:        null,
   form: {
-    serviceType: '',         // 来店 | 出張
-    menu:        null,       // { name, duration, price }
-    date:        '',         // yyyy-MM-dd
-    timeSlot:    '',         // HH:mm
-    endTime:     '',         // HH:mm
+    serviceType: '',   // 来店 | 出張
+    course:      '',   // コース名
+    duration:    null, // 施術時間（分）
+    date:        '',   // yyyy-MM-dd
+    timeSlot:    '',   // HH:mm
+    endTime:     '',   // HH:mm
     name:        '',
     phone:       '',
     address:     '',
-    isEditing:   false,      // 返客が情報を編集中かどうか
+    isEditing:   false,
   },
   ui: {
     calendarYear:   new Date().getFullYear(),
@@ -38,7 +69,7 @@ const state = {
     availableSlots: null,
     loadingSlots:   false,
   },
-  reservation: null,        // 完了した予約情報
+  reservation: null,
 };
 
 // ============================================================
@@ -48,7 +79,6 @@ async function apiGet(action, params = {}) {
   const url = new URL(CONFIG.GAS_URL);
   url.searchParams.set('action', action);
   Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
-
   const res = await fetch(url.toString());
   if (!res.ok) throw new Error('通信エラーが発生しました (GET ' + action + ')');
   const data = await res.json();
@@ -57,7 +87,6 @@ async function apiGet(action, params = {}) {
 }
 
 async function apiPost(data) {
-  // Content-Type: text/plain でCORSプリフライトを回避
   const res = await fetch(CONFIG.GAS_URL, {
     method:  'POST',
     headers: { 'Content-Type': 'text/plain' },
@@ -73,27 +102,24 @@ async function apiPost(data) {
 // ユーティリティ
 // ============================================================
 function formatDateStr(date) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
+  return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
 }
 
 function formatJapanese(dateStr) {
   if (!dateStr) return '';
   const date     = new Date(dateStr + 'T00:00:00+09:00');
-  const dayNames = ['日', '月', '火', '水', '木', '金', '土'];
-  return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日（${dayNames[date.getDay()]}）`;
+  const dayNames = ['日','月','火','水','木','金','土'];
+  return `${date.getFullYear()}年${date.getMonth()+1}月${date.getDate()}日（${dayNames[date.getDay()]}）`;
 }
 
 function addMinutes(timeStr, min) {
   const [h, m] = timeStr.split(':').map(Number);
   const total  = h * 60 + m + min;
-  return String(Math.floor(total / 60)).padStart(2, '0') + ':' + String(total % 60).padStart(2, '0');
+  return String(Math.floor(total/60)).padStart(2,'0') + ':' + String(total%60).padStart(2,'0');
 }
 
 function isHoliday(dateStr, date, holidays) {
-  const dayNames = ['日曜日', '月曜日', '火曜日', '水曜日', '木曜日', '金曜日', '土曜日'];
+  const dayNames = ['日曜日','月曜日','火曜日','水曜日','木曜日','金曜日','土曜日'];
   return holidays.includes(dayNames[date.getDay()]) || holidays.includes(dateStr);
 }
 
@@ -101,14 +127,10 @@ function showToast(msg) {
   const old = document.querySelector('.toast');
   if (old) old.remove();
   const el = document.createElement('div');
-  el.className = 'toast';
+  el.className   = 'toast';
   el.textContent = msg;
   document.body.appendChild(el);
   setTimeout(() => el.remove(), 2800);
-}
-
-function formatPrice(price) {
-  return '¥' + Number(price).toLocaleString();
 }
 
 // ============================================================
@@ -120,8 +142,8 @@ function render() {
   if (state.phase === 'loading') {
     app.innerHTML = `
       <div class="loading-screen">
+        <div class="loading-logo">trunk</div>
         <div class="spinner"></div>
-        <p>読み込み中...</p>
       </div>`;
     return;
   }
@@ -143,32 +165,37 @@ function render() {
     return;
   }
 
-  // form フェーズ
-  const stepTitles = ['種別選択', 'メニュー', '日付選択', '時間選択', 'お客様情報'];
-  let stepContent = '';
+  const TOTAL_STEPS  = 6;
+  const stepTitles   = ['種別', 'コース', '時間', '日付', '時間帯', 'お客様'];
+  let   stepContent  = '';
+
   switch (state.step) {
     case 1: stepContent = renderStep1(); break;
     case 2: stepContent = renderStep2(); break;
     case 3: stepContent = renderStep3(); break;
     case 4: stepContent = renderStep4(); break;
     case 5: stepContent = renderStep5(); break;
+    case 6: stepContent = renderStep6(); break;
   }
 
   app.innerHTML = `
     <div class="header">
       ${state.step > 1
         ? `<button class="header-back" onclick="goBack()">‹</button>`
-        : `<div style="width:36px"></div>`}
-      <span class="header-title">ご予約</span>
+        : `<div class="header-spacer"></div>`}
+      <span class="header-logo">trunk</span>
+      <div class="header-spacer"></div>
     </div>
-    <div class="progress-bar">
-      <div class="progress-fill" style="width:${(state.step / 5) * 100}%"></div>
-    </div>
-    <div class="progress-steps">
-      ${stepTitles.map((t, i) => `
-        <span class="progress-step ${i + 1 === state.step ? 'active' : i + 1 < state.step ? 'done' : ''}">
-          ${i + 1 < state.step ? '✓' : i + 1}. ${t}
-        </span>`).join('')}
+    <div class="progress-wrap">
+      <div class="progress-track">
+        <div class="progress-fill" style="width:${(state.step / TOTAL_STEPS) * 100}%"></div>
+      </div>
+      <div class="progress-steps">
+        ${stepTitles.map((t, i) => `
+          <span class="progress-step ${i+1 === state.step ? 'active' : i+1 < state.step ? 'done' : ''}">
+            ${i+1 < state.step ? '✓' : i+1}. ${t}
+          </span>`).join('')}
+      </div>
     </div>
     <div class="content">${stepContent}</div>
     <div class="btn-area" id="btn-area"></div>`;
@@ -177,7 +204,7 @@ function render() {
 }
 
 // ============================================================
-// ボタンエリアのレンダリング
+// ボタンエリア
 // ============================================================
 function renderButtons() {
   const area = document.getElementById('btn-area');
@@ -185,59 +212,52 @@ function renderButtons() {
 
   switch (state.step) {
     case 1:
-      area.innerHTML = ''; // Step1はカードタップで進む
+      area.innerHTML = ''; // カードタップで進む
       break;
-
     case 2:
       area.innerHTML = `
-        <button class="btn btn-primary" id="next-btn"
-          onclick="goNext()" ${!state.form.menu ? 'disabled' : ''}>
-          次へ　›
-        </button>`;
+        <button class="btn btn-primary" onclick="goNext()"
+          ${!state.form.course ? 'disabled' : ''}>次へ　›</button>`;
       break;
-
     case 3:
       area.innerHTML = `
-        <button class="btn btn-primary" id="next-btn"
-          onclick="onDateNext()" ${!state.form.date ? 'disabled' : ''}>
-          この日で時間を選ぶ　›
-        </button>`;
+        <button class="btn btn-primary" onclick="goNext()"
+          ${!state.form.duration ? 'disabled' : ''}>次へ　›</button>`;
       break;
-
     case 4:
       area.innerHTML = `
-        <button class="btn btn-primary" id="next-btn"
-          onclick="goNext()" ${!state.form.timeSlot ? 'disabled' : ''}>
-          次へ　›
-        </button>`;
+        <button class="btn btn-primary" onclick="onDateNext()"
+          ${!state.form.date ? 'disabled' : ''}>この日で時間を選ぶ　›</button>`;
       break;
-
     case 5:
       area.innerHTML = `
-        <button class="btn btn-primary" onclick="submitReservation()">
-          予約を確定する
-        </button>`;
+        <button class="btn btn-primary" onclick="goNext()"
+          ${!state.form.timeSlot ? 'disabled' : ''}>次へ　›</button>`;
+      break;
+    case 6:
+      area.innerHTML = `
+        <button class="btn btn-primary" onclick="submitReservation()">予約を確定する</button>`;
       break;
   }
 }
 
 // ============================================================
-// STEP 1：サービス種別
+// STEP 1：来店 or 出張
 // ============================================================
 function renderStep1() {
   return `
-    <p class="section-title">サービス種別</p>
-    <p class="section-sub">来店またはご自宅・ご指定場所への出張をお選びください</p>
+    <p class="section-title">来店 or 出張</p>
+    <p class="section-sub">ご希望のサービス形式をお選びください</p>
     <div class="service-grid">
       <button class="service-btn ${state.form.serviceType === '来店' ? 'selected' : ''}"
         onclick="selectServiceType('来店')">
-        <span class="icon">🏠</span>
+        <span class="service-icon">${ICONS.store}</span>
         <span class="label">来店</span>
         <span class="desc">サロンにお越しください</span>
       </button>
       <button class="service-btn ${state.form.serviceType === '出張' ? 'selected' : ''}"
         onclick="selectServiceType('出張')">
-        <span class="icon">🚗</span>
+        <span class="service-icon">${ICONS.car}</span>
         <span class="label">出張</span>
         <span class="desc">ご指定場所へお伺いします</span>
       </button>
@@ -246,7 +266,8 @@ function renderStep1() {
 
 function selectServiceType(type) {
   state.form.serviceType = type;
-  state.form.menu        = null;
+  state.form.course      = '';
+  state.form.duration    = null;
   state.form.date        = '';
   state.form.timeSlot    = '';
   state.step = 2;
@@ -254,65 +275,87 @@ function selectServiceType(type) {
 }
 
 // ============================================================
-// STEP 2：メニュー選択
+// STEP 2：コース選択（時間・料金なし）
 // ============================================================
 function renderStep2() {
-  const menus = state.settings?.menus || [];
-  if (menus.length === 0) {
-    return `<div class="no-slots">メニューが設定されていません。<br>設定シートをご確認ください。</div>`;
-  }
-
-  const items = menus.map(m => {
-    const selected = state.form.menu?.name === m.name;
+  const checkSvg = `<svg viewBox="0 0 12 12" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="2,6 5,9 10,3"/></svg>`;
+  const items = COURSES.map(name => {
+    const selected = state.form.course === name;
     return `
-      <button class="menu-item ${selected ? 'selected' : ''}"
-        onclick="selectMenu(${JSON.stringify(m).replace(/"/g, '&quot;')})">
-        <div class="menu-info">
-          <div class="menu-name">${m.name}</div>
-          <div class="menu-meta">⏱ 約${m.duration}分</div>
-        </div>
-        <div class="menu-price">${m.price ? formatPrice(m.price) : ''}</div>
-        <div class="menu-check">✓</div>
+      <button class="course-item ${selected ? 'selected' : ''}"
+        onclick="selectCourse(this, '${name}')">
+        <span class="course-name">${name}</span>
+        <span class="course-check">${checkSvg}</span>
       </button>`;
   }).join('');
 
   return `
     <p class="section-title">コース選択</p>
     <p class="section-sub">ご希望のコースをお選びください</p>
-    <div class="menu-list">${items}</div>`;
+    <div class="course-list">${items}</div>`;
 }
 
-function selectMenu(menu) {
-  state.form.menu     = menu;
+function selectCourse(el, name) {
+  state.form.course   = name;
+  state.form.duration = null;
   state.form.date     = '';
   state.form.timeSlot = '';
   state.ui.availableSlots = null;
   renderButtons();
-  // カードの selected 状態を更新
-  document.querySelectorAll('.menu-item').forEach(el => el.classList.remove('selected'));
-  event.currentTarget.classList.add('selected');
+  document.querySelectorAll('.course-item').forEach(e => e.classList.remove('selected'));
+  el.classList.add('selected');
 }
 
 // ============================================================
-// STEP 3：日付選択（カレンダー）
+// STEP 3：時間選択（90 / 120 / 150 / 180分）
 // ============================================================
 function renderStep3() {
+  const items = DURATIONS.map(min => {
+    const selected = state.form.duration === min;
+    const h  = Math.floor(min / 60);
+    const m  = min % 60;
+    const label = m > 0 ? `${h}時間${m}分` : `${h}時間`;
+    return `
+      <button class="duration-btn ${selected ? 'selected' : ''}"
+        onclick="selectDuration(this, ${min})">
+        <span class="duration-min">${min}分</span>
+        <span class="duration-label">${label}</span>
+      </button>`;
+  }).join('');
+
+  return `
+    <p class="section-title">時間選択</p>
+    <p class="section-sub">施術時間をお選びください</p>
+    <div class="duration-grid">${items}</div>`;
+}
+
+function selectDuration(el, min) {
+  state.form.duration = min;
+  state.form.date     = '';
+  state.form.timeSlot = '';
+  state.ui.availableSlots = null;
+  renderButtons();
+  document.querySelectorAll('.duration-btn').forEach(e => e.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+// ============================================================
+// STEP 4：日付選択（カレンダー）
+// ============================================================
+function renderStep4() {
   const { calendarYear: year, calendarMonth: month } = state.ui;
   const holidays   = state.settings?.holidays || [];
-  const today      = new Date(); today.setHours(0, 0, 0, 0);
-  const monthNames = ['1月', '2月', '3月', '4月', '5月', '6月',
-                      '7月', '8月', '9月', '10月', '11月', '12月'];
+  const today      = new Date(); today.setHours(0,0,0,0);
+  const monthNames = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
 
-  const firstDay = new Date(year, month, 1);
-  const lastDay  = new Date(year, month + 1, 0);
-
-  const prevDisabled = (year < today.getFullYear() ||
-    (year === today.getFullYear() && month <= today.getMonth()));
+  const firstDay     = new Date(year, month, 1);
+  const lastDay      = new Date(year, month + 1, 0);
+  const prevDisabled = year < today.getFullYear() ||
+    (year === today.getFullYear() && month <= today.getMonth());
 
   let gridHtml = `
     <div class="calendar-grid">
-      ${['日','月','火','水','木','金','土'].map(d =>
-        `<div class="cal-day-header">${d}</div>`).join('')}
+      ${['日','月','火','水','木','金','土'].map(d => `<div class="cal-day-header">${d}</div>`).join('')}
       ${Array(firstDay.getDay()).fill('<div class="cal-day empty"></div>').join('')}`;
 
   for (let d = 1; d <= lastDay.getDate(); d++) {
@@ -369,7 +412,7 @@ function selectDate(dateStr) {
 
 async function onDateNext() {
   if (!state.form.date) return;
-  state.step = 4;
+  state.step = 5;
   state.ui.loadingSlots   = true;
   state.ui.availableSlots = null;
   render();
@@ -377,7 +420,7 @@ async function onDateNext() {
   try {
     const res = await apiGet('getAvailableSlots', {
       date:     state.form.date,
-      duration: state.form.menu.duration,
+      duration: state.form.duration,
     });
     state.ui.availableSlots = res;
   } catch (err) {
@@ -390,12 +433,12 @@ async function onDateNext() {
 }
 
 // ============================================================
-// STEP 4：時間スロット選択
+// STEP 5：時間スロット選択
 // ============================================================
-function renderStep4() {
+function renderStep5() {
   if (state.ui.loadingSlots) {
     return `
-      <p class="section-title">時間選択</p>
+      <p class="section-title">時間帯選択</p>
       <p class="slot-date-label">${formatJapanese(state.form.date)}</p>
       <div class="loading-overlay">
         <div class="spinner"></div>
@@ -407,7 +450,7 @@ function renderStep4() {
 
   if (!slotsData || !slotsData.available) {
     return `
-      <p class="section-title">時間選択</p>
+      <p class="section-title">時間帯選択</p>
       <p class="slot-date-label">${formatJapanese(state.form.date)}</p>
       <div class="no-slots">
         ${slotsData?.reason || 'この日は予約を受け付けていません。'}<br>
@@ -419,21 +462,21 @@ function renderStep4() {
   const available = slotsData.slots.filter(s => s.available);
   if (available.length === 0) {
     return `
-      <p class="section-title">時間選択</p>
+      <p class="section-title">時間帯選択</p>
       <p class="slot-date-label">${formatJapanese(state.form.date)}</p>
       <div class="no-slots">
-        この日は満席です。<br>別の日付をお選びください。<br>
+        この日は満席です。別の日付をお選びください。<br>
         <button class="btn btn-secondary" style="margin-top:16px;max-width:200px"
           onclick="goBack()">日付を選び直す</button>
       </div>`;
   }
 
-  const duration = state.form.menu?.duration || 60;
+  const duration = state.form.duration || 90;
   const slotBtns = slotsData.slots.map(s => {
     const end      = addMinutes(s.time, duration);
     const selected = state.form.timeSlot === s.time;
     const cls      = selected ? 'slot-btn selected' : s.available ? 'slot-btn available' : 'slot-btn unavailable';
-    const onclick  = s.available ? `onclick="selectSlot('${s.time}', '${end}')"` : '';
+    const onclick  = s.available ? `onclick="selectSlot('${s.time}','${end}')"` : '';
     return `
       <button class="${cls}" ${onclick} ${!s.available ? 'disabled' : ''}>
         ${s.time}
@@ -442,7 +485,7 @@ function renderStep4() {
   }).join('');
 
   return `
-    <p class="section-title">時間選択</p>
+    <p class="section-title">時間帯選択</p>
     <p class="slot-date-label">${formatJapanese(state.form.date)}</p>
     <div class="slot-grid">${slotBtns}</div>`;
 }
@@ -454,46 +497,43 @@ function selectSlot(time, endTime) {
 }
 
 // ============================================================
-// STEP 5：顧客情報
+// STEP 6：お客様情報
 // ============================================================
-function renderStep5() {
+function renderStep6() {
   const isReturning = state.customer?.exists;
   const f           = state.form;
+  const h = Math.floor(f.duration / 60);
+  const m = f.duration % 60;
+  const durationLabel = m > 0 ? `${h}時間${m}分` : `${h}時間`;
 
-  // 予約サマリー
   const summary = `
     <div class="summary-card">
       <div class="summary-row">
-        <span class="summary-icon">🏠</span>
+        <span class="summary-icon">${f.serviceType === '来店' ? ICONS.store.replace('52','18').replace('52','18') : ''}</span>
         <span class="summary-label">種別</span>
         <span class="summary-value">${f.serviceType}</span>
       </div>
       <div class="summary-row">
-        <span class="summary-icon">💆</span>
         <span class="summary-label">コース</span>
-        <span class="summary-value">${f.menu?.name}（約${f.menu?.duration}分）</span>
+        <span class="summary-value">${f.course}</span>
       </div>
       <div class="summary-row">
-        <span class="summary-icon">📅</span>
+        <span class="summary-label">時間</span>
+        <span class="summary-value">${f.duration}分（${durationLabel}）</span>
+      </div>
+      <div class="summary-row">
         <span class="summary-label">日時</span>
         <span class="summary-value">${formatJapanese(f.date)}<br>${f.timeSlot}〜${f.endTime}</span>
       </div>
-      ${f.menu?.price ? `
-      <div class="summary-row">
-        <span class="summary-icon">💴</span>
-        <span class="summary-label">料金</span>
-        <span class="summary-value">${formatPrice(f.menu.price)}</span>
-      </div>` : ''}
     </div>`;
 
-  // 返客で編集モードでない場合：確認表示
   if (isReturning && !f.isEditing) {
     const prevKarte = state.karte?.entries?.[0];
     return `
       <p class="section-title">お客様情報</p>
       <p class="section-sub">前回の情報を引き継いでいます。変更がある場合は「編集する」をタップしてください。</p>
       ${summary}
-      <div class="card">
+      <div class="info-card">
         <div class="info-row">
           <span class="info-key">お名前</span>
           <span class="info-value">${state.customer.name}</span>
@@ -507,17 +547,16 @@ function renderStep5() {
           <span class="info-key">訪問先住所</span>
           <span class="info-value">${state.customer.address || '未登録'}</span>
         </div>` : ''}
-        <button class="edit-toggle" onclick="startEditing()">✏️ 編集する</button>
+        <button class="edit-toggle" onclick="startEditing()">編集する</button>
       </div>
       ${prevKarte ? `
       <div class="karte-prev">
-        <div class="karte-prev-title">📋 前回の記録（${prevKarte.date}）</div>
+        <div class="karte-prev-title">前回の記録（${prevKarte.date}）</div>
         ${prevKarte.treatmentContent ? `<div class="karte-prev-row"><span class="karte-prev-label">施術：</span>${prevKarte.treatmentContent}</div>` : ''}
         ${prevKarte.nextNotes ? `<div class="karte-prev-row"><span class="karte-prev-label">申し送り：</span>${prevKarte.nextNotes}</div>` : ''}
       </div>` : ''}`;
   }
 
-  // 新規または編集モード：フォーム表示
   const nameVal    = f.name    || (isReturning ? state.customer.name    : '');
   const phoneVal   = f.phone   || (isReturning ? state.customer.phone   : '');
   const addressVal = f.address || (isReturning ? state.customer.address : '');
@@ -526,7 +565,7 @@ function renderStep5() {
     <p class="section-title">お客様情報</p>
     <p class="section-sub">ご予約に必要な情報をご入力ください</p>
     ${summary}
-    <div class="card">
+    <div style="background:var(--bg-card);border:1px solid var(--border-light);border-radius:var(--radius);padding:18px;margin-bottom:12px;box-shadow:var(--shadow-sm)">
       <div class="form-group">
         <label class="form-label">お名前<span class="required">必須</span></label>
         <input class="form-input" type="text" id="input-name"
@@ -540,7 +579,7 @@ function renderStep5() {
           oninput="state.form.phone = this.value">
       </div>
       ${f.serviceType === '出張' ? `
-      <div class="form-group">
+      <div class="form-group" style="margin-bottom:0">
         <label class="form-label">訪問先住所<span class="required">必須</span></label>
         <input class="form-input" type="text" id="input-address"
           placeholder="東京都渋谷区〇〇1-2-3" value="${addressVal}"
@@ -552,9 +591,9 @@ function renderStep5() {
 
 function startEditing() {
   state.form.isEditing = true;
-  state.form.name    = state.customer?.name    || '';
-  state.form.phone   = state.customer?.phone   || '';
-  state.form.address = state.customer?.address || '';
+  state.form.name      = state.customer?.name    || '';
+  state.form.phone     = state.customer?.phone   || '';
+  state.form.address   = state.customer?.address || '';
   render();
 }
 
@@ -565,31 +604,28 @@ function renderDone() {
   const r = state.reservation;
   return `
     <div class="done-screen">
-      <div class="done-icon">✓</div>
+      <div class="done-mark">
+        <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="6,16 13,23 26,9"/>
+        </svg>
+      </div>
       <h2 class="done-title">予約が完了しました</h2>
-      <p class="done-sub">
-        LINEに予約確認メッセージをお送りしました。<br>
-        前日にもリマインドをお送りします。
-      </p>
+      <p class="done-sub">LINEに予約確認メッセージをお送りしました。<br>前日にもリマインドをお送りします。</p>
       <div class="done-detail">
         <div class="summary-row">
-          <span class="summary-icon">💆</span>
           <span class="summary-label">コース</span>
           <span class="summary-value">${r?.menuName || ''}</span>
         </div>
         <div class="summary-row">
-          <span class="summary-icon">📅</span>
           <span class="summary-label">日時</span>
           <span class="summary-value">${formatJapanese(r?.date || '')}<br>${r?.startTime || ''}〜${r?.endTime || ''}</span>
         </div>
         <div class="summary-row">
-          <span class="summary-icon">🏠</span>
           <span class="summary-label">種別</span>
           <span class="summary-value">${r?.serviceType || ''}</span>
         </div>
         ${r?.serviceType === '出張' && r?.address ? `
         <div class="summary-row">
-          <span class="summary-icon">📍</span>
           <span class="summary-label">住所</span>
           <span class="summary-value">${r.address}</span>
         </div>` : ''}
@@ -603,7 +639,7 @@ function renderDone() {
 // ナビゲーション
 // ============================================================
 function goNext() {
-  if (state.step < 5) {
+  if (state.step < 6) {
     state.step++;
     render();
     window.scrollTo(0, 0);
@@ -612,12 +648,11 @@ function goNext() {
 
 function goBack() {
   if (state.step > 1) {
-    if (state.step === 4) {
-      // Step4→Step3：スロット情報をリセット
+    if (state.step === 5) {
       state.form.timeSlot = '';
       state.form.endTime  = '';
     }
-    if (state.step === 5) {
+    if (state.step === 6) {
       state.form.isEditing = false;
     }
     state.step--;
@@ -630,7 +665,6 @@ function goBack() {
 // 予約送信
 // ============================================================
 async function submitReservation() {
-  // バリデーション
   const f           = state.form;
   const isReturning = state.customer?.exists;
   const nameVal     = f.name    || (isReturning && !f.isEditing ? state.customer?.name    : '');
@@ -653,7 +687,6 @@ async function submitReservation() {
     return;
   }
 
-  // 送信ボタンを無効化
   const btn = document.querySelector('.btn-primary');
   if (btn) { btn.disabled = true; btn.textContent = '送信中...'; }
 
@@ -663,8 +696,8 @@ async function submitReservation() {
       lineUserId:   state.lineUserId,
       customerName: nameVal.trim(),
       serviceType:  f.serviceType,
-      menuName:     f.menu.name,
-      duration:     f.menu.duration,
+      menuName:     f.course,          // コース名をメニュー名として送信
+      duration:     f.duration,
       date:         f.date,
       startTime:    f.timeSlot,
       address:      addressVal.trim(),
@@ -687,49 +720,48 @@ async function submitReservation() {
 // ============================================================
 async function init() {
   try {
-    // LIFF初期化
     await liff.init({ liffId: CONFIG.LIFF_ID });
 
-    // LINEアプリ外アクセスのチェック
     if (!liff.isInClient()) {
-      state.phase = 'error';
+      state.phase        = 'error';
       state.errorMessage = 'このページはLINEアプリ内でのみご利用いただけます。\nLINEアプリから開いてください。';
       render();
       return;
     }
 
-    // 未ログインの場合はログインへリダイレクト
     if (!liff.isLoggedIn()) {
       liff.login();
       return;
     }
 
-    // LINEプロフィールを取得
     const profile     = await liff.getProfile();
     state.lineUserId  = profile.userId;
     state.displayName = profile.displayName;
     state.pictureUrl  = profile.pictureUrl;
 
-    // 設定・顧客情報・カルテを並行取得
-    const [settings, customer, karte] = await Promise.all([
+    // 必須の2件だけ先に取得してすぐ表示（カルテは後回し）
+    const [settings, customer] = await Promise.all([
       apiGet('getSettings'),
       apiGet('getCustomerInfo', { lineUserId: state.lineUserId }),
-      apiGet('getKarte',        { lineUserId: state.lineUserId }),
     ]);
 
     state.settings = settings;
     state.customer = customer;
-    state.karte    = karte;
 
-    // 返客の場合は名前・電話・住所をフォームにセット
     if (customer?.exists) {
       state.form.name    = customer.name    || '';
       state.form.phone   = customer.phone   || '';
       state.form.address = customer.address || '';
     }
 
+    // フォームをすぐ表示
     state.phase = 'form';
     render();
+
+    // カルテはバックグラウンドで取得（表示をブロックしない）
+    apiGet('getKarte', { lineUserId: state.lineUserId })
+      .then(karte => { state.karte = karte; })
+      .catch(() => { state.karte = { entries: [] }; });
 
   } catch (err) {
     console.error(err);
@@ -739,5 +771,4 @@ async function init() {
   }
 }
 
-// アプリ起動
 init();
