@@ -37,7 +37,7 @@ const state = {
   // 予約タブ
   futureReservations: [],
   // グリッドタブ
-  gridData: null,          // { openSet: Set<"date_time">, resMap: Map<"date_time", {customerName,menuName}> }
+  gridData: null,          // { openSet, resMap, calMap, intervalSet }
   gridOriginalOpen: null,  // Set<"date_time"> — 保存済み状態
   gridLoading: false,
   gridSaving: false,
@@ -370,42 +370,13 @@ function renderGridTab() {
     return `<th class="${cls}" id="col-${date}">${m}/${day}<br><span style="font-weight:400;font-size:10px;">${wk}</span></th>`;
   }).join('');
 
+  const { calMap, intervalSet } = state.gridData;
+
   // ボディ行
   const bodyRows = GRID_TIMES.map(time => {
     const cells = dates.map(date => {
-      const key      = `${date}_${time}`;
-      const res      = resMap.get(key);
-      const isOpen   = openSet.has(key);
-      const wasOpen  = state.gridOriginalOpen.has(key);
-      const modified = isOpen !== wasOpen;
-
-      let cls     = 'grid-cell';
-      let content = '';
-
-      if (date === today) cls += ' today-col';
-
-      if (res) {
-        // 予約あり（変更不可）
-        cls    += isOpen ? ' reserved-open' : ' reserved';
-        content = `<div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:50px;">${res.customerName}</div>`;
-      } else if (modified && isOpen) {
-        cls    += ' pending-open';
-        content = '○';
-      } else if (modified && !isOpen) {
-        cls    += ' pending-close';
-        content = '✕';
-      } else if (isOpen) {
-        cls    += ' open';
-        content = '○';
-      } else {
-        cls    += ' closed';
-        content = '✕';
-      }
-
-      const onclick = res
-        ? `onclick="showToast('${res.customerName}さんの予約があります', true)"`
-        : `onclick="localToggleGridCell('${date}','${time}')"`;
-
+      const key = `${date}_${time}`;
+      const [cls, content, onclick] = _buildCell(key, date, time, { resMap, openSet, calMap, intervalSet, today });
       return `<td class="${cls}" id="cell-${key}" ${onclick}>${content}</td>`;
     }).join('');
 
@@ -462,36 +433,73 @@ function updateGridCell(date, time) {
   const td  = document.getElementById(`cell-${key}`);
   if (!td) return;
 
-  const res     = state.gridData.resMap.get(key);
-  const isOpen  = state.gridData.openSet.has(key);
-  const wasOpen = state.gridOriginalOpen.has(key);
+  const { resMap, openSet, calMap, intervalSet } = state.gridData;
+  const [cls, content] = _buildCell(key, date, time, { resMap, openSet, calMap, intervalSet, today: todayStr() });
+
+  td.className = cls;
+  td.innerHTML = content;
+}
+
+// ============================================================
+// セル描画ヘルパー：[className, innerHTML, onclickAttr] を返す
+// 優先順位: 予約 > pending変更 > カレンダー予定 > インターバル > open/closed
+// ============================================================
+function _buildCell(key, date, time, { resMap, openSet, calMap, intervalSet, today }) {
+  const res      = resMap.get(key);
+  const cal      = calMap ? calMap.get(key) : null;
+  const inInterval = intervalSet ? intervalSet.has(key) : false;
+  const isOpen   = openSet.has(key);
+  const wasOpen  = state.gridOriginalOpen ? state.gridOriginalOpen.has(key) : isOpen;
   const modified = isOpen !== wasOpen;
-  const today   = todayStr();
 
   let cls     = 'grid-cell';
   let content = '';
+  let onclick = '';
 
   if (date === today) cls += ' today-col';
 
   if (res) {
+    // ── 施術予約あり（タップで詳細・変更不可）
     cls    += isOpen ? ' reserved-open' : ' reserved';
-    content = `<div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:50px;">${res.customerName}</div>`;
+    const label = res.serviceType === '出張' ? '出' : '来';
+    content = `<div class="cell-res-inner">${res.customerName}<span class="cell-type-dot ${res.serviceType === '出張' ? 'dot-mobile' : 'dot-visit'}">${label}</span></div>`;
+    onclick = `onclick="showToast('${res.customerName}（${res.serviceType}）', false)"`;
+
   } else if (modified && isOpen) {
     cls    += ' pending-open';
     content = '○';
+    onclick = `onclick="localToggleGridCell('${date}','${time}')"`;
+
   } else if (modified && !isOpen) {
     cls    += ' pending-close';
     content = '✕';
+    onclick = `onclick="localToggleGridCell('${date}','${time}')"`;
+
+  } else if (cal) {
+    // ── プライベートカレンダー予定（トグル可能）
+    cls    += isOpen ? ' cal-event-open' : ' cal-event';
+    const shortTitle = cal.title.length > 5 ? cal.title.slice(0, 5) + '…' : cal.title;
+    content = `<div class="cell-cal-inner">${shortTitle}</div>`;
+    onclick = `onclick="localToggleGridCell('${date}','${time}')"`;
+
+  } else if (inInterval) {
+    // ── インターバル（受付不可）
+    cls    += isOpen ? ' interval-open' : ' interval';
+    content = '<span class="cell-interval-label">準備</span>';
+    onclick = `onclick="localToggleGridCell('${date}','${time}')"`;
+
   } else if (isOpen) {
     cls    += ' open';
     content = '○';
+    onclick = `onclick="localToggleGridCell('${date}','${time}')"`;
+
   } else {
     cls    += ' closed';
-    content = '✕';
+    content = '−';
+    onclick = `onclick="localToggleGridCell('${date}','${time}')"`;
   }
 
-  td.className = cls;
-  td.innerHTML = content;
+  return [cls, content, onclick];
 }
 
 // ツールバー（変更件数・保存ボタン）だけ更新
@@ -537,7 +545,7 @@ async function loadGridData() {
     const result = await apiGet({ action: 'getGridData', startDate: todayStr(), days: 31 });
     if (result.error) throw new Error(result.error);
 
-    // スロットから開放セットを構築（範囲 → 30分ブロックに展開）
+    // ① スロットから開放セットを構築（範囲 → 30分ブロックに展開）
     const openSet = new Set();
     result.slots.forEach(slot => {
       const start = timeToMin(slot.startTime);
@@ -548,7 +556,7 @@ async function loadGridData() {
       }
     });
 
-    // 予約からマップを構築（開始〜終了の各ブロックにマッピング）
+    // ② 予約からマップを構築（開始〜終了の各ブロックにマッピング）
     const resMap = new Map();
     result.reservations.forEach(res => {
       const start = timeToMin(res.startTime);
@@ -559,12 +567,70 @@ async function loadGridData() {
           resMap.set(`${res.date}_${t}`, {
             customerName: res.customerName,
             menuName:     res.menuName,
+            serviceType:  res.serviceType,
           });
         }
       }
     });
 
-    state.gridData         = { openSet, resMap };
+    // ③ カレンダーイベント（プライベート）からマップを構築
+    const calMap = new Map();
+    (result.calendarEvents || []).forEach(ev => {
+      const start = timeToMin(ev.startTime);
+      const end   = timeToMin(ev.endTime);
+      // 重なるブロックを計算（ブロック T は [T, T+30) を占有）
+      const blockStart = Math.floor(start / 30) * 30;
+      const blockEnd   = end > start ? Math.ceil(end / 30) * 30 : blockStart + 30;
+      for (let m = blockStart; m < blockEnd; m += 30) {
+        const t = minutesToTimeStr(m);
+        if (GRID_TIMES.includes(t)) {
+          const key = `${ev.date}_${t}`;
+          // 同ブロックに複数イベントがある場合は先着優先
+          if (!calMap.has(key)) calMap.set(key, { title: ev.title });
+        }
+      }
+    });
+
+    // ④ インターバル不可ブロックを計算
+    //   a) 予約終了後のバッファ（予約間インターバル）
+    //   b) カレンダー予定の前後バッファ（calendarIntervalMobile）
+    const intervalMin    = result.intervalMinutes        || 15;
+    const calIntervalMin = result.calendarIntervalMobile || 90;
+    const intervalSet    = new Set();
+
+    // a) 予約後バッファ
+    result.reservations.forEach(res => {
+      const endMin    = timeToMin(res.endTime);
+      const bufferEnd = endMin + intervalMin;
+      for (let m = endMin; m < bufferEnd; m += 30) {
+        const t = minutesToTimeStr(m);
+        if (GRID_TIMES.includes(t)) intervalSet.add(`${res.date}_${t}`);
+      }
+    });
+
+    // b) カレンダー予定の前後バッファ（予定ブロック自体は calMap が担当するので除く）
+    (result.calendarEvents || []).forEach(ev => {
+      const evStart = timeToMin(ev.startTime);
+      const evEnd   = timeToMin(ev.endTime);
+      // 前バッファ: [evStart - calIntervalMin, evStart)
+      const preBufStart = evStart - calIntervalMin;
+      for (let m = Math.floor(preBufStart / 30) * 30; m < evStart; m += 30) {
+        const t = minutesToTimeStr(m);
+        if (GRID_TIMES.includes(t) && !calMap.has(`${ev.date}_${t}`)) {
+          intervalSet.add(`${ev.date}_${t}`);
+        }
+      }
+      // 後バッファ: [evEnd, evEnd + calIntervalMin)
+      const postBufEnd = evEnd + calIntervalMin;
+      for (let m = evEnd; m < postBufEnd; m += 30) {
+        const t = minutesToTimeStr(m);
+        if (GRID_TIMES.includes(t) && !calMap.has(`${ev.date}_${t}`)) {
+          intervalSet.add(`${ev.date}_${t}`);
+        }
+      }
+    });
+
+    state.gridData         = { openSet, resMap, calMap, intervalSet };
     state.gridOriginalOpen = new Set(openSet); // スナップショット保存
 
   } catch(err) {
