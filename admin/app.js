@@ -9,16 +9,22 @@ const ADMIN_CONFIG = {
   LIFF_ID: '2009742884-8ACt2H8G',
 };
 
-// 06:00 〜 28:00 を30分刻みで生成
-const TIME_OPTIONS = (() => {
-  const options = [];
-  for (let h = 6; h <= 28; h++) {
-    for (let m = 0; m < 60; m += 30) {
-      if (h === 28 && m > 0) break;
-      options.push(`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`);
-    }
-  }
-  return options;
+// ============================================================
+// 時間ユーティリティ（フロントエンド用）
+// ============================================================
+function minutesToTimeStr(m) {
+  return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+}
+function timeToMin(t) {
+  const [h, m] = t.split(':').map(Number);
+  return h * 60 + m;
+}
+
+// グリッドに表示する時間帯：10:00〜26:00（30分刻み）
+const GRID_TIMES = (() => {
+  const times = [];
+  for (let m = 10 * 60; m < 26 * 60; m += 30) times.push(minutesToTimeStr(m));
+  return times;
 })();
 
 // ============================================================
@@ -26,26 +32,16 @@ const TIME_OPTIONS = (() => {
 // ============================================================
 const state = {
   phase: 'loading',
-  tab: 'reservations',      // reservations | slots | slotStatus
+  tab: 'reservations',   // 'reservations' | 'grid'
   lineUserId: null,
-  selectedDate: todayStr(),  // 予約タブで表示中の日付
+  // 予約タブ
+  selectedDate: todayStr(),
   reservations: [],
-  slots: [],
-  // カレンダー
-  calendarMonth: (() => {
-    const d = new Date(); d.setDate(1); d.setHours(0,0,0,0); return d;
-  })(),
-  monthSummary: {},  // { "2025-05-10": "open" | "reserved" } カレンダーマーカー用
-  // スロット追加フォーム（スロット追加タブの選択日付）
-  form: { date: '', startTime: '10:00', endTime: '12:00', note: '' },
-  // スロット管理タブ：30分ブロックの開放状況
-  dayStatus: [],
-  originalDayStatus: [],  // サーバーから取得した元の状態（差分検出用）
-  dayStatusLoading: false,
-  savingSlots: false,
-  // スロット編集
-  editingSlotId: null,
-  editForm: { startTime: '10:00', endTime: '12:00', note: '' },
+  // グリッドタブ
+  gridData: null,          // { openSet: Set<"date_time">, resMap: Map<"date_time", {customerName,menuName}> }
+  gridOriginalOpen: null,  // Set<"date_time"> — 保存済み状態
+  gridLoading: false,
+  gridSaving: false,
 };
 
 // ============================================================
@@ -53,23 +49,31 @@ const state = {
 // ============================================================
 function todayStr() {
   const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
-
 function dateToStr(d) {
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
-
 function formatDateLabel(dateStr) {
-  const d = new Date(dateStr + 'T00:00:00+09:00');
-  const week = ['日','月','火','水','木','金','土'][d.getDay()];
-  return `${d.getMonth()+1}月${d.getDate()}日（${week}）`;
+  const d    = new Date(dateStr + 'T00:00:00+09:00');
+  const week = ['日', '月', '火', '水', '木', '金', '土'][d.getDay()];
+  return `${d.getMonth() + 1}月${d.getDate()}日（${week}）`;
 }
-
 function shiftDate(dateStr, days) {
   const d = new Date(dateStr + 'T00:00:00+09:00');
   d.setDate(d.getDate() + days);
   return dateToStr(d);
+}
+// 今日から31日分の日付配列
+function getGridDates() {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const dates = [];
+  for (let i = 0; i < 31; i++) {
+    const d = new Date(today);
+    d.setDate(today.getDate() + i);
+    dates.push(dateToStr(d));
+  }
+  return dates;
 }
 
 // ============================================================
@@ -81,7 +85,6 @@ async function apiGet(params) {
   const res = await fetch(url.toString());
   return res.json();
 }
-
 async function apiPost(body) {
   const res = await fetch(ADMIN_CONFIG.GAS_URL, {
     method: 'POST',
@@ -111,7 +114,6 @@ function renderLoading() {
       <div class="spinner"></div>
     </div>`;
 }
-
 function renderAuthError() {
   document.getElementById('app').innerHTML = `
     <div class="loading-screen">
@@ -123,7 +125,29 @@ function renderAuthError() {
 }
 
 // ============================================================
-// メイン画面（ヘッダー＋コンテンツ＋タブバー）
+// SVG アイコン定義
+// ============================================================
+const ICONS = {
+  // 予約：クリップボードアイコン
+  reservation: `<svg class="admin-tab-icon" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+    <polyline points="14 2 14 8 20 8"/>
+    <line x1="8" y1="13" x2="16" y2="13"/>
+    <line x1="8" y1="17" x2="14" y2="17"/>
+  </svg>`,
+  // 予約枠：グリッドテーブルアイコン
+  grid: `<svg class="admin-tab-icon" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" stroke-width="2" stroke-linecap="round">
+    <rect x="3" y="3" width="18" height="18" rx="2"/>
+    <line x1="3" y1="9" x2="21" y2="9"/>
+    <line x1="3" y1="15" x2="21" y2="15"/>
+    <line x1="9" y1="3" x2="9" y2="21"/>
+  </svg>`,
+};
+
+// ============================================================
+// メイン画面
 // ============================================================
 function renderMain() {
   document.getElementById('app').innerHTML = `
@@ -134,14 +158,13 @@ function renderMain() {
     </div>
     <div class="admin-content" id="main-content"></div>
     <nav class="admin-tab-bar">
-      <button class="admin-tab-btn ${state.tab==='reservations'?'active':''}" onclick="switchTab('reservations')">
-        <span class="admin-tab-icon">📋</span>予約
+      <button class="admin-tab-btn ${state.tab === 'reservations' ? 'active' : ''}"
+              onclick="switchTab('reservations')">
+        ${ICONS.reservation}予約
       </button>
-      <button class="admin-tab-btn ${state.tab==='slots'?'active':''}" onclick="switchTab('slots')">
-        <span class="admin-tab-icon">➕</span>スロット追加
-      </button>
-      <button class="admin-tab-btn ${state.tab==='slotStatus'?'active':''}" onclick="switchTab('slotStatus')">
-        <span class="admin-tab-icon">📅</span>枠の状況
+      <button class="admin-tab-btn ${state.tab === 'grid' ? 'active' : ''}"
+              onclick="switchTab('grid')">
+        ${ICONS.grid}予約枠の管理
       </button>
     </nav>`;
   renderContent();
@@ -150,120 +173,15 @@ function renderMain() {
 function renderContent() {
   const el = document.getElementById('main-content');
   if (!el) return;
-  if (state.tab === 'reservations')  el.innerHTML = renderReservationsTab();
-  else if (state.tab === 'slots')    el.innerHTML = renderSlotsTab();
-  else                               el.innerHTML = renderSlotStatusTab();
+  if (state.tab === 'reservations') el.innerHTML = renderReservationsTab();
+  else                              el.innerHTML = renderGridTab();
 }
 
 function switchTab(tab) {
   state.tab = tab;
-  state.editingSlotId = null;
   renderMain();
-  if (tab === 'slots') {
-    loadSlots();
-    loadMonthSummary(state.calendarMonth.getFullYear(), state.calendarMonth.getMonth() + 1);
-    // 日付選択済みの場合はブロックテーブルも再取得（枠の状況タブでの編集を反映）
-    if (state.form.date) loadDayStatus(state.form.date);
-  }
-  if (tab === 'slotStatus') loadSlots();
-}
-
-// ============================================================
-// カレンダーコンポーネント
-// ============================================================
-function changeCalendarMonth(delta) {
-  const d = new Date(state.calendarMonth);
-  d.setMonth(d.getMonth() + delta);
-  state.calendarMonth = d;
-  renderContent();
-  loadMonthSummary(d.getFullYear(), d.getMonth() + 1);
-}
-
-async function loadMonthSummary(year, month) {
-  try {
-    const result = await apiGet({ action: 'getMonthSummary', year, month });
-    if (result && typeof result === 'object' && !result.error) {
-      state.monthSummary = result;
-      renderContent();
-    }
-  } catch(err) {
-    // サマリー取得失敗はマーカー非表示で無視
-  }
-}
-
-function selectCalendarDate(dateStr) {
-  state.form.date      = dateStr;
-  state.dayStatus      = [];
-  state.originalDayStatus = [];
-  renderContent();
-  loadDayStatus(dateStr);
-}
-
-function renderCalendar() {
-  const year  = state.calendarMonth.getFullYear();
-  const month = state.calendarMonth.getMonth();
-  const today = new Date(); today.setHours(0,0,0,0);
-
-  const firstDow    = new Date(year, month, 1).getDay();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-
-  let cells = '';
-  for (let i = 0; i < firstDow; i++) {
-    cells += `<div class="cal-cell"></div>`;
-  }
-  for (let d = 1; d <= daysInMonth; d++) {
-    const date    = new Date(year, month, d);
-    const dateStr = dateToStr(date);
-    const isPast  = date < today;
-    const isSel   = state.form.date === dateStr;
-    const isToday = dateStr === todayStr();
-    const dow     = date.getDay();
-
-    let cls = 'cal-cell cal-day';
-    if (isPast)       cls += ' cal-past';
-    else if (isSel)   cls += ' cal-selected';
-    else if (isToday) cls += ' cal-today';
-
-    let colorStyle = '';
-    if (!isPast && !isSel) {
-      if (dow === 0) colorStyle = 'style="color:#EF5350"';
-      if (dow === 6) colorStyle = 'style="color:#1565C0"';
-    }
-
-    const onclick = isPast ? '' : `onclick="selectCalendarDate('${dateStr}')"`;
-
-    // カレンダーマーカー（○=開放あり、予=予約あり、✕=全クローズ）
-    const summary = state.monthSummary[dateStr];
-    let markHtml = '';
-    if (isPast) {
-      markHtml = `<span class="cal-day-mark"></span>`;
-    } else if (summary === 'reserved') {
-      markHtml = `<span class="cal-day-mark reserved">予</span>`;
-    } else if (summary === 'open') {
-      markHtml = `<span class="cal-day-mark open">○</span>`;
-    } else {
-      markHtml = `<span class="cal-day-mark closed">✕</span>`;
-    }
-
-    cells += `<div class="${cls}" ${colorStyle} ${onclick}><span class="cal-day-num">${d}</span>${markHtml}</div>`;
-  }
-
-  return `
-    <div class="calendar">
-      <div class="cal-header">
-        <button class="cal-nav-btn" onclick="changeCalendarMonth(-1)">‹</button>
-        <span class="cal-month-label">${year}年${month+1}月</span>
-        <button class="cal-nav-btn" onclick="changeCalendarMonth(1)">›</button>
-      </div>
-      <div class="cal-weekdays">
-        <div class="cal-wd" style="color:#EF5350">日</div>
-        <div class="cal-wd">月</div><div class="cal-wd">火</div>
-        <div class="cal-wd">水</div><div class="cal-wd">木</div>
-        <div class="cal-wd">金</div>
-        <div class="cal-wd" style="color:#1565C0">土</div>
-      </div>
-      <div class="cal-grid">${cells}</div>
-    </div>`;
+  if (tab === 'grid' && !state.gridData) loadGridData();
+  else if (tab === 'grid') renderContent(); // 既にデータあり
 }
 
 // ============================================================
@@ -271,12 +189,11 @@ function renderCalendar() {
 // ============================================================
 function renderReservationsTab() {
   const dateLabel = formatDateLabel(state.selectedDate);
-
   let cards = '';
   if (state.reservations.length === 0) {
     cards = `<div class="empty-state">この日の予約はありません</div>`;
   } else {
-    const sorted = [...state.reservations].sort((a,b) => a.startTime.localeCompare(b.startTime));
+    const sorted = [...state.reservations].sort((a, b) => a.startTime.localeCompare(b.startTime));
     cards = sorted.map(r => {
       const badgeClass = r.serviceType === '来店' ? 'badge-visit' : 'badge-mobile';
       return `
@@ -291,7 +208,6 @@ function renderReservationsTab() {
         </div>`;
     }).join('');
   }
-
   return `
     <div class="date-nav">
       <button class="date-nav-btn" onclick="changeDate(-1)">‹</button>
@@ -307,276 +223,225 @@ function changeDate(days) {
 }
 
 // ============================================================
-// スロット管理タブ（カレンダー＋開放状況テーブル）
+// 予約枠グリッドタブ
 // ============================================================
-// ローカル変更があるか判定
-function isDirty() {
-  if (!state.originalDayStatus.length) return false;
-  return state.dayStatus.some((b, i) => {
-    const orig = state.originalDayStatus[i];
-    return orig && b.isOpen !== orig.isOpen;
-  });
-}
-
-function renderSlotsTab() {
-  let tableHtml = '';
-  let saveBarHtml = '';
-
-  if (!state.form.date) {
-    tableHtml = `<div class="empty-state" style="padding:20px 0;">カレンダーから日付を選んでください</div>`;
-  } else if (state.dayStatusLoading) {
-    tableHtml = `<div class="empty-state" style="padding:32px 0;">
-      <div class="spinner" style="margin:0 auto 12px;width:28px;height:28px;border-width:3px;"></div>
+function renderGridTab() {
+  if (state.gridLoading) {
+    return `<div class="empty-state" style="padding-top:80px;">
+      <div class="spinner" style="margin:0 auto 16px;width:28px;height:28px;border-width:3px;"></div>
       読み込み中...
     </div>`;
-  } else if (state.dayStatus.length === 0) {
-    tableHtml = `<div class="empty-state">データを読み込めませんでした</div>`;
-  } else {
-    const rows = state.dayStatus.map(block => {
-      const statusClass = block.isOpen ? 'open' : 'closed';
-      const statusIcon  = block.isOpen ? '○' : '✕';
+  }
+  if (!state.gridData) {
+    return `<div class="empty-state">データを読み込めませんでした</div>`;
+  }
 
-      let infoText  = '';
-      let infoClass = '';
-      if (block.reservation) {
-        infoText  = `📌 ${block.reservation.customerName}・${block.reservation.menuName}`;
-        infoClass = 'reserved';
-      } else if (block.isOpen) {
-        infoText = '予約なし';
+  const dates    = getGridDates();
+  const today    = todayStr();
+  const { openSet, resMap } = state.gridData;
+  const changes  = getGridChanges();
+  const hasDirty = Object.keys(changes).length > 0;
+  const changeCount = Object.keys(changes).length;
+
+  // ヘッダー行
+  const headerCells = dates.map(date => {
+    const d   = new Date(date + 'T00:00:00+09:00');
+    const dow = d.getDay();
+    const m   = d.getMonth() + 1;
+    const day = d.getDate();
+    const wk  = ['日', '月', '火', '水', '木', '金', '土'][dow];
+    let cls   = 'grid-date-th';
+    if (date === today)  cls += ' today-col';
+    else if (dow === 0)  cls += ' sun';
+    else if (dow === 6)  cls += ' sat';
+    return `<th class="${cls}" id="col-${date}">${m}/${day}<br><span style="font-weight:400;font-size:10px;">${wk}</span></th>`;
+  }).join('');
+
+  // ボディ行
+  const bodyRows = GRID_TIMES.map(time => {
+    const cells = dates.map(date => {
+      const key      = `${date}_${time}`;
+      const res      = resMap.get(key);
+      const isOpen   = openSet.has(key);
+      const wasOpen  = state.gridOriginalOpen.has(key);
+      const modified = isOpen !== wasOpen;
+
+      let cls     = 'grid-cell';
+      let content = '';
+
+      if (date === today) cls += ' today-col';
+
+      if (res) {
+        // 予約あり（変更不可）
+        cls    += isOpen ? ' reserved-open' : ' reserved';
+        content = `<div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:50px;">${res.customerName}</div>`;
+      } else if (modified && isOpen) {
+        cls    += ' pending-open';
+        content = '○';
+      } else if (modified && !isOpen) {
+        cls    += ' pending-close';
+        content = '✕';
+      } else if (isOpen) {
+        cls    += ' open';
+        content = '○';
+      } else {
+        cls    += ' closed';
+        content = '✕';
       }
 
-      const onclick = block.reservation
-        ? `onclick="showToast('この時間帯には予約があります', true)"`
-        : `onclick="localToggleSlot('${block.time}')"`;
+      const onclick = res
+        ? `onclick="showToast('${res.customerName}さんの予約があります', true)"`
+        : `onclick="localToggleGridCell('${date}','${time}')"`;
 
-      return `
-        <div class="slot-row ${statusClass}" ${onclick}>
-          <span class="slot-row-time">${block.time}</span>
-          <span class="slot-row-status ${statusClass}">${statusIcon}</span>
-          <span class="slot-row-info ${infoClass}">${infoText}</span>
-        </div>`;
+      return `<td class="${cls}" ${onclick}>${content}</td>`;
     }).join('');
 
-    tableHtml = `<div class="slot-table">${rows}</div>`;
-
-    // 変更がある場合のみ保存バーを表示
-    if (isDirty()) {
-      saveBarHtml = `
-        <div class="slot-save-bar">
-          <button class="btn btn-primary" style="width:100%;"
-                  onclick="handleSaveDaySlots()" ${state.savingSlots ? 'disabled' : ''}>
-            ${state.savingSlots ? '保存中...' : '変更を保存する'}
-          </button>
-        </div>`;
-    }
-  }
-
-  const headerHtml = state.form.date
-    ? `<div class="slot-table-header">▼ ${formatDateLabel(state.form.date)}の開放状況（タップで切り替え）</div>`
-    : '';
+    return `<tr><td class="grid-time-td">${time}</td>${cells}</tr>`;
+  }).join('');
 
   return `
-    <div style="padding:12px 16px 0;">
-      ${renderCalendar()}
-    </div>
-    ${headerHtml}
-    ${tableHtml}
-    ${saveBarHtml}`;
+    <div class="grid-container">
+      <div class="grid-toolbar">
+        <span class="grid-toolbar-note">
+          ${hasDirty
+            ? `<span style="color:var(--primary);font-weight:600;">${changeCount}日分の変更あり</span>`
+            : 'タップで○/✕を切り替え、保存で反映'}
+        </span>
+        <button class="grid-save-btn ${hasDirty ? '' : 'hidden'}"
+                onclick="handleSaveGrid()"
+                ${state.gridSaving ? 'disabled' : ''}>
+          ${state.gridSaving ? '保存中...' : '保存する'}
+        </button>
+      </div>
+      <div class="grid-scroll" id="grid-scroll">
+        <table class="grid-table">
+          <thead>
+            <tr>
+              <th class="grid-corner">時間</th>
+              ${headerCells}
+            </tr>
+          </thead>
+          <tbody>${bodyRows}</tbody>
+        </table>
+      </div>
+    </div>`;
 }
 
-async function loadDayStatus(dateStr) {
-  state.dayStatusLoading = true;
-  renderContent();
-  try {
-    const result = await apiGet({ action: 'getDayStatus', date: dateStr });
-    const blocks = Array.isArray(result) ? result : [];
-    state.dayStatus         = blocks;
-    state.originalDayStatus = blocks.map(b => ({ ...b })); // ディープコピー
-  } catch(err) {
-    state.dayStatus         = [];
-    state.originalDayStatus = [];
+// ============================================================
+// グリッドのデータ操作
+// ============================================================
+
+// セルをローカルでトグル（API呼び出しなし）
+function localToggleGridCell(date, time) {
+  const key = `${date}_${time}`;
+  if (state.gridData.openSet.has(key)) {
+    state.gridData.openSet.delete(key);
+  } else {
+    state.gridData.openSet.add(key);
   }
-  state.dayStatusLoading = false;
   renderContent();
 }
 
-// ローカルのみのトグル（API呼び出しなし）
-function localToggleSlot(time) {
-  const block = state.dayStatus.find(b => b.time === time);
-  if (block) {
-    block.isOpen = !block.isOpen;
-    renderContent();
-  }
+// 変更があった日付とその開放時間リストを取得
+function getGridChanges() {
+  const changes = {};
+  const dates   = getGridDates();
+  dates.forEach(date => {
+    const origTimes = GRID_TIMES.filter(t => state.gridOriginalOpen.has(`${date}_${t}`));
+    const currTimes = GRID_TIMES.filter(t => state.gridData.openSet.has(`${date}_${t}`));
+    if (JSON.stringify(origTimes) !== JSON.stringify(currTimes)) {
+      changes[date] = currTimes;
+    }
+  });
+  return changes;
 }
 
-// 変更を一括保存
-async function handleSaveDaySlots() {
-  if (state.savingSlots) return;
-  state.savingSlots = true;
+// グリッドデータをGASから取得
+async function loadGridData() {
+  state.gridLoading = true;
   renderContent();
-
-  const openTimes = state.dayStatus.filter(b => b.isOpen).map(b => b.time);
 
   try {
-    const result = await apiPost({
-      action: 'saveDaySlots',
-      date: state.form.date,
-      openTimes,
+    const result = await apiGet({ action: 'getGridData', startDate: todayStr(), days: 31 });
+    if (result.error) throw new Error(result.error);
+
+    // スロットから開放セットを構築（範囲 → 30分ブロックに展開）
+    const openSet = new Set();
+    result.slots.forEach(slot => {
+      const start = timeToMin(slot.startTime);
+      const end   = timeToMin(slot.endTime);
+      for (let m = start; m < end; m += 30) {
+        const t = minutesToTimeStr(m);
+        if (GRID_TIMES.includes(t)) openSet.add(`${slot.date}_${t}`);
+      }
     });
+
+    // 予約からマップを構築（開始〜終了の各ブロックにマッピング）
+    const resMap = new Map();
+    result.reservations.forEach(res => {
+      const start = timeToMin(res.startTime);
+      const end   = timeToMin(res.endTime);
+      for (let m = start; m < end; m += 30) {
+        const t = minutesToTimeStr(m);
+        if (GRID_TIMES.includes(t)) {
+          resMap.set(`${res.date}_${t}`, {
+            customerName: res.customerName,
+            menuName:     res.menuName,
+          });
+        }
+      }
+    });
+
+    state.gridData         = { openSet, resMap };
+    state.gridOriginalOpen = new Set(openSet); // スナップショット保存
+
+  } catch(err) {
+    state.gridData = null;
+    showToast('データの読み込みに失敗しました', true);
+  }
+
+  state.gridLoading = false;
+  renderContent();
+
+  // 今日の列までスクロール
+  setTimeout(() => {
+    const col = document.getElementById(`col-${todayStr()}`);
+    if (col) col.scrollIntoView({ inline: 'start', behavior: 'smooth' });
+  }, 100);
+}
+
+// 変更をまとめてGASに保存
+async function handleSaveGrid() {
+  if (state.gridSaving) return;
+  const changes = getGridChanges();
+  if (Object.keys(changes).length === 0) return;
+
+  state.gridSaving = true;
+  renderContent();
+
+  try {
+    const result = await apiPost({ action: 'saveGridSlots', changes });
     if (result.error) throw new Error(result.error);
     showToast('保存しました');
-    // 保存後はサーバーから再取得して originalDayStatus とカレンダーマーカーを更新
-    await Promise.all([
-      loadDayStatus(state.form.date),
-      loadMonthSummary(state.calendarMonth.getFullYear(), state.calendarMonth.getMonth() + 1),
-    ]);
+    // 保存済み状態を更新
+    state.gridOriginalOpen = new Set(state.gridData.openSet);
   } catch(err) {
     showToast('保存に失敗しました: ' + err.message, true);
   }
-  state.savingSlots = false;
+
+  state.gridSaving = false;
   renderContent();
 }
 
 // ============================================================
-// 枠の状況タブ（一覧・編集・削除）
-// ============================================================
-function renderSlotStatusTab() {
-  if (state.slots.length === 0) {
-    return `<div class="empty-state" style="padding-top:60px;">登録済みの受付スロットはありません</div>`;
-  }
-
-  const groups = {};
-  state.slots.forEach(s => {
-    if (!groups[s.date]) groups[s.date] = [];
-    groups[s.date].push(s);
-  });
-
-  const timeOpts = (selected) =>
-    TIME_OPTIONS.map(t =>
-      `<option value="${t}" ${t===selected?'selected':''}>${t}</option>`
-    ).join('');
-
-  const html = Object.entries(groups).map(([date, slots]) => {
-    const items = slots.map(s => {
-      // 編集中
-      if (state.editingSlotId === s.slotId) {
-        return `
-          <div class="slot-item slot-item-editing">
-            <div class="time-grid" style="width:100%;">
-              <div class="form-group" style="margin:0;">
-                <label class="form-label">開始時間</label>
-                <select class="form-input" onchange="state.editForm.startTime=this.value">
-                  ${timeOpts(state.editForm.startTime)}
-                </select>
-              </div>
-              <div class="form-group" style="margin:0;">
-                <label class="form-label">終了時間</label>
-                <select class="form-input" onchange="state.editForm.endTime=this.value">
-                  ${timeOpts(state.editForm.endTime)}
-                </select>
-              </div>
-            </div>
-            <input type="text" class="form-input" placeholder="備考（任意）"
-                   value="${state.editForm.note}"
-                   oninput="state.editForm.note=this.value"
-                   style="margin-top:10px;">
-            <div style="display:flex;gap:8px;margin-top:10px;">
-              <button class="btn btn-primary" style="flex:1;padding:9px 0;font-size:13px;"
-                      onclick="handleUpdateSlot('${s.slotId}')">保存</button>
-              <button class="btn btn-secondary" style="flex:1;padding:9px 0;font-size:13px;"
-                      onclick="cancelEditSlot()">キャンセル</button>
-            </div>
-          </div>`;
-      }
-      // 通常表示
-      return `
-        <div class="slot-item">
-          <div>
-            <div class="slot-time">${s.startTime} 〜 ${s.endTime}</div>
-            ${s.note ? `<div class="slot-note">${s.note}</div>` : ''}
-          </div>
-          <div style="display:flex;gap:6px;flex-shrink:0;margin-left:12px;">
-            <button class="slot-edit-btn" onclick="startEditSlot('${s.slotId}')">編集</button>
-            <button class="slot-delete-btn" onclick="handleDeleteSlot('${s.slotId}')">削除</button>
-          </div>
-        </div>`;
-    }).join('');
-
-    return `
-      <div class="slot-group">
-        <div class="slot-group-date">${formatDateLabel(date)}</div>
-        ${items}
-      </div>`;
-  }).join('');
-
-  return `<div class="slot-list">${html}</div>`;
-}
-
-function startEditSlot(slotId) {
-  const slot = state.slots.find(s => s.slotId === slotId);
-  if (!slot) return;
-  state.editingSlotId = slotId;
-  state.editForm = { startTime: slot.startTime, endTime: slot.endTime, note: slot.note || '' };
-  renderContent();
-}
-
-function cancelEditSlot() {
-  state.editingSlotId = null;
-  renderContent();
-}
-
-async function handleUpdateSlot(slotId) {
-  const { startTime, endTime, note } = state.editForm;
-  if (startTime >= endTime) { showToast('終了時間は開始時間より後にしてください', true); return; }
-
-  try {
-    const result = await apiPost({ action:'updateSlot', slotId, startTime, endTime, note });
-    if (result.error) throw new Error(result.error);
-    showToast('更新しました');
-    state.editingSlotId = null;
-    await loadSlots();
-    loadMonthSummary(state.calendarMonth.getFullYear(), state.calendarMonth.getMonth() + 1);
-    // スロット追加タブで表示中の日付があれば再取得
-    if (state.form.date) loadDayStatus(state.form.date);
-  } catch(err) {
-    showToast('更新に失敗しました: ' + err.message, true);
-  }
-}
-
-async function handleDeleteSlot(slotId) {
-  if (!confirm('このスロットを削除しますか？')) return;
-  try {
-    const result = await apiPost({ action:'deleteSlot', slotId });
-    if (result.error) throw new Error(result.error);
-    showToast('削除しました');
-    await loadSlots();
-    loadMonthSummary(state.calendarMonth.getFullYear(), state.calendarMonth.getMonth() + 1);
-    // スロット追加タブで表示中の日付があれば再取得
-    if (state.form.date) loadDayStatus(state.form.date);
-  } catch(err) {
-    showToast('削除に失敗しました: ' + err.message, true);
-  }
-}
-
-// ============================================================
-// データ読み込み
+// 予約データ読み込み
 // ============================================================
 async function loadReservations() {
   try {
-    const result = await apiGet({ action:'getReservations', date: state.selectedDate });
+    const result = await apiGet({ action: 'getReservations', date: state.selectedDate });
     state.reservations = Array.isArray(result) ? result : [];
   } catch(err) {
     state.reservations = [];
-  }
-  renderContent();
-}
-
-async function loadSlots() {
-  try {
-    const result = await apiGet({ action:'getSlotsList' });
-    state.slots = Array.isArray(result) ? result : [];
-  } catch(err) {
-    state.slots = [];
   }
   renderContent();
 }
@@ -590,18 +455,17 @@ async function initApp() {
     await liff.init({ liffId: ADMIN_CONFIG.LIFF_ID });
     if (!liff.isLoggedIn()) { liff.login(); return; }
 
-    const profile = await liff.getProfile();
+    const profile    = await liff.getProfile();
     state.lineUserId = profile.userId;
 
-    const authResult = await apiGet({ action:'checkOwner', lineUserId: state.lineUserId });
+    const authResult = await apiGet({ action: 'checkOwner', lineUserId: state.lineUserId });
     if (!authResult.isOwner) { renderAuthError(); return; }
 
-    const reservations = await apiGet({ action:'getReservations', date: state.selectedDate });
+    const reservations = await apiGet({ action: 'getReservations', date: state.selectedDate });
     state.reservations = Array.isArray(reservations) ? reservations : [];
     state.phase = 'main';
     renderMain();
-    // バックグラウンドでカレンダーマーカーを読み込む
-    loadMonthSummary(state.calendarMonth.getFullYear(), state.calendarMonth.getMonth() + 1);
+
   } catch(err) {
     document.getElementById('app').innerHTML = `
       <div class="loading-screen">
