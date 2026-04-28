@@ -35,8 +35,7 @@ const state = {
   tab: 'reservations',   // 'reservations' | 'grid'
   lineUserId: null,
   // 予約タブ
-  selectedDate: todayStr(),
-  reservations: [],
+  futureReservations: [],
   // グリッドタブ
   gridData: null,          // { openSet: Set<"date_time">, resMap: Map<"date_time", {customerName,menuName}> }
   gridOriginalOpen: null,  // Set<"date_time"> — 保存済み状態
@@ -181,20 +180,27 @@ function switchTab(tab) {
   state.tab = tab;
   renderMain();
   if (tab === 'grid' && !state.gridData) loadGridData();
-  else if (tab === 'grid') renderContent(); // 既にデータあり
+  else if (tab === 'grid') renderContent();
+  else if (tab === 'reservations') loadFutureReservations();
 }
 
 // ============================================================
 // 予約タブ
 // ============================================================
 function renderReservationsTab() {
-  const dateLabel = formatDateLabel(state.selectedDate);
-  let cards = '';
-  if (state.reservations.length === 0) {
-    cards = `<div class="empty-state">この日の予約はありません</div>`;
-  } else {
-    const sorted = [...state.reservations].sort((a, b) => a.startTime.localeCompare(b.startTime));
-    cards = sorted.map(r => {
+  if (state.futureReservations.length === 0) {
+    return `<div class="empty-state">今後の予約はありません</div>`;
+  }
+
+  // 日付ごとにグループ化
+  const byDate = {};
+  state.futureReservations.forEach(r => {
+    if (!byDate[r.date]) byDate[r.date] = [];
+    byDate[r.date].push(r);
+  });
+
+  const sections = Object.keys(byDate).sort().map(date => {
+    const cards = byDate[date].map(r => {
       const badgeClass = r.serviceType === '来店' ? 'badge-visit' : 'badge-mobile';
       return `
         <div class="reservation-card">
@@ -207,19 +213,12 @@ function renderReservationsTab() {
           ${r.address ? `<div class="reservation-menu" style="margin-top:4px;">📍 ${r.address}</div>` : ''}
         </div>`;
     }).join('');
-  }
-  return `
-    <div class="date-nav">
-      <button class="date-nav-btn" onclick="changeDate(-1)">‹</button>
-      <span class="date-nav-label">${dateLabel}</span>
-      <button class="date-nav-btn" onclick="changeDate(1)">›</button>
-    </div>
-    <div class="reservation-list">${cards}</div>`;
-}
+    return `
+      <div class="date-section-header">${formatDateLabel(date)}</div>
+      ${cards}`;
+  }).join('');
 
-function changeDate(days) {
-  state.selectedDate = shiftDate(state.selectedDate, days);
-  loadReservations();
+  return `<div class="reservation-list">${sections}</div>`;
 }
 
 // ============================================================
@@ -293,7 +292,7 @@ function renderGridTab() {
         ? `onclick="showToast('${res.customerName}さんの予約があります', true)"`
         : `onclick="localToggleGridCell('${date}','${time}')"`;
 
-      return `<td class="${cls}" ${onclick}>${content}</td>`;
+      return `<td class="${cls}" id="cell-${key}" ${onclick}>${content}</td>`;
     }).join('');
 
     return `<tr><td class="grid-time-td">${time}</td>${cells}</tr>`;
@@ -302,12 +301,12 @@ function renderGridTab() {
   return `
     <div class="grid-container">
       <div class="grid-toolbar">
-        <span class="grid-toolbar-note">
+        <span class="grid-toolbar-note" id="grid-toolbar-note">
           ${hasDirty
             ? `<span style="color:var(--primary);font-weight:600;">${changeCount}日分の変更あり</span>`
             : 'タップで○/✕を切り替え、保存で反映'}
         </span>
-        <button class="grid-save-btn ${hasDirty ? '' : 'hidden'}"
+        <button class="grid-save-btn ${hasDirty ? '' : 'hidden'}" id="grid-save-btn"
                 onclick="handleSaveGrid()"
                 ${state.gridSaving ? 'disabled' : ''}>
           ${state.gridSaving ? '保存中...' : '保存する'}
@@ -331,7 +330,7 @@ function renderGridTab() {
 // グリッドのデータ操作
 // ============================================================
 
-// セルをローカルでトグル（API呼び出しなし）
+// セルをローカルでトグル（スクロール位置を保持するため外科的DOM更新）
 function localToggleGridCell(date, time) {
   const key = `${date}_${time}`;
   if (state.gridData.openSet.has(key)) {
@@ -339,7 +338,66 @@ function localToggleGridCell(date, time) {
   } else {
     state.gridData.openSet.add(key);
   }
-  renderContent();
+  updateGridCell(date, time);
+  updateGridToolbar();
+}
+
+// 対象セルのみDOMを更新
+function updateGridCell(date, time) {
+  const key = `${date}_${time}`;
+  const td  = document.getElementById(`cell-${key}`);
+  if (!td) return;
+
+  const res     = state.gridData.resMap.get(key);
+  const isOpen  = state.gridData.openSet.has(key);
+  const wasOpen = state.gridOriginalOpen.has(key);
+  const modified = isOpen !== wasOpen;
+  const today   = todayStr();
+
+  let cls     = 'grid-cell';
+  let content = '';
+
+  if (date === today) cls += ' today-col';
+
+  if (res) {
+    cls    += isOpen ? ' reserved-open' : ' reserved';
+    content = `<div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:50px;">${res.customerName}</div>`;
+  } else if (modified && isOpen) {
+    cls    += ' pending-open';
+    content = '○';
+  } else if (modified && !isOpen) {
+    cls    += ' pending-close';
+    content = '✕';
+  } else if (isOpen) {
+    cls    += ' open';
+    content = '○';
+  } else {
+    cls    += ' closed';
+    content = '✕';
+  }
+
+  td.className = cls;
+  td.innerHTML = content;
+}
+
+// ツールバー（変更件数・保存ボタン）だけ更新
+function updateGridToolbar() {
+  const changes    = getGridChanges();
+  const hasDirty   = Object.keys(changes).length > 0;
+  const changeCount = Object.keys(changes).length;
+
+  const note = document.getElementById('grid-toolbar-note');
+  const btn  = document.getElementById('grid-save-btn');
+  if (note) {
+    note.innerHTML = hasDirty
+      ? `<span style="color:var(--primary);font-weight:600;">${changeCount}日分の変更あり</span>`
+      : 'タップで○/✕を切り替え、保存で反映';
+  }
+  if (btn) {
+    btn.className   = `grid-save-btn ${hasDirty ? '' : 'hidden'}`;
+    btn.disabled    = state.gridSaving;
+    btn.textContent = state.gridSaving ? '保存中...' : '保存する';
+  }
 }
 
 // 変更があった日付とその開放時間リストを取得
@@ -434,14 +492,14 @@ async function handleSaveGrid() {
 }
 
 // ============================================================
-// 予約データ読み込み
+// 予約データ読み込み（本日以降の全件）
 // ============================================================
-async function loadReservations() {
+async function loadFutureReservations() {
   try {
-    const result = await apiGet({ action: 'getReservations', date: state.selectedDate });
-    state.reservations = Array.isArray(result) ? result : [];
+    const result = await apiGet({ action: 'getFutureReservations' });
+    state.futureReservations = Array.isArray(result) ? result : [];
   } catch(err) {
-    state.reservations = [];
+    state.futureReservations = [];
   }
   renderContent();
 }
@@ -461,8 +519,8 @@ async function initApp() {
     const authResult = await apiGet({ action: 'checkOwner', lineUserId: state.lineUserId });
     if (!authResult.isOwner) { renderAuthError(); return; }
 
-    const reservations = await apiGet({ action: 'getReservations', date: state.selectedDate });
-    state.reservations = Array.isArray(reservations) ? reservations : [];
+    const reservations = await apiGet({ action: 'getFutureReservations' });
+    state.futureReservations = Array.isArray(reservations) ? reservations : [];
     state.phase = 'main';
     renderMain();
 
