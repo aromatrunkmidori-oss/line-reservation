@@ -35,8 +35,12 @@ const state = {
   calendarMonth: (() => {
     const d = new Date(); d.setDate(1); d.setHours(0,0,0,0); return d;
   })(),
-  // スロット追加フォーム
+  // スロット追加フォーム（スロット追加タブの選択日付）
   form: { date: '', startTime: '10:00', endTime: '12:00', note: '' },
+  // スロット管理タブ：30分ブロックの開放状況
+  dayStatus: [],
+  dayStatusLoading: false,
+  togglingTime: null,
   // スロット編集
   editingSlotId: null,
   editForm: { startTime: '10:00', endTime: '12:00', note: '' },
@@ -168,12 +172,9 @@ function changeCalendarMonth(delta) {
 
 function selectCalendarDate(dateStr) {
   state.form.date = dateStr;
+  state.dayStatus = [];
   renderContent();
-  // 日付選択後にフォームへスクロール
-  setTimeout(() => {
-    const form = document.getElementById('slot-add-form');
-    if (form) form.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, 50);
+  loadDayStatus(dateStr);
 }
 
 function renderCalendar() {
@@ -270,68 +271,90 @@ function changeDate(days) {
 }
 
 // ============================================================
-// スロット追加タブ（カレンダーUI）
+// スロット管理タブ（カレンダー＋開放状況テーブル）
 // ============================================================
 function renderSlotsTab() {
-  const timeOpts = (selected) =>
-    TIME_OPTIONS.map(t =>
-      `<option value="${t}" ${t===selected?'selected':''}>${t}</option>`
-    ).join('');
+  let tableHtml = '';
 
-  const formHtml = state.form.date ? `
-    <div class="add-slot-form" id="slot-add-form">
-      <div class="add-slot-form-title">📅 ${formatDateLabel(state.form.date)}</div>
-      <div class="time-grid">
-        <div class="form-group">
-          <label class="form-label">開始時間</label>
-          <select class="form-input" onchange="state.form.startTime=this.value">
-            ${timeOpts(state.form.startTime)}
-          </select>
-        </div>
-        <div class="form-group">
-          <label class="form-label">終了時間</label>
-          <select class="form-input" onchange="state.form.endTime=this.value">
-            ${timeOpts(state.form.endTime)}
-          </select>
-        </div>
-      </div>
-      <div class="form-group" style="margin-top:12px;">
-        <label class="form-label">備考（任意）</label>
-        <input type="text" class="form-input" placeholder="例：○○地区限定"
-               value="${state.form.note}"
-               oninput="state.form.note=this.value">
-      </div>
-      <button class="btn btn-primary" style="width:100%;margin-top:14px;" onclick="handleAddSlot()">
-        追加する
-      </button>
-    </div>` : `
-    <div class="empty-state" style="padding:20px 0 0;">
-      カレンダーから日付を選んでください
+  if (!state.form.date) {
+    tableHtml = `<div class="empty-state" style="padding:20px 0;">カレンダーから日付を選んでください</div>`;
+  } else if (state.dayStatusLoading) {
+    tableHtml = `<div class="empty-state" style="padding:32px 0;">
+      <div class="spinner" style="margin:0 auto 12px;width:28px;height:28px;border-width:3px;"></div>
+      読み込み中...
     </div>`;
+  } else if (state.dayStatus.length === 0) {
+    tableHtml = `<div class="empty-state">データを読み込めませんでした</div>`;
+  } else {
+    const rows = state.dayStatus.map(block => {
+      const isToggling  = state.togglingTime === block.time;
+      const statusClass = block.isOpen ? 'open' : 'closed';
+      const statusIcon  = block.isOpen ? '○' : '✕';
+
+      let infoText  = '';
+      let infoClass = '';
+      if (block.reservation) {
+        infoText  = `📌 ${block.reservation.customerName}・${block.reservation.menuName}`;
+        infoClass = 'reserved';
+      } else if (block.isOpen) {
+        infoText = '予約なし';
+      }
+
+      const onclick = isToggling
+        ? ''
+        : block.reservation
+          ? `onclick="showToast('この時間帯には予約があります', true)"`
+          : `onclick="handleToggleSlot('${block.time}')"`;
+
+      return `
+        <div class="slot-row ${statusClass} ${isToggling ? 'toggling' : ''}" ${onclick}>
+          <span class="slot-row-time">${block.time}</span>
+          <span class="slot-row-status ${statusClass}">${isToggling ? '…' : statusIcon}</span>
+          <span class="slot-row-info ${infoClass}">${infoText}</span>
+        </div>`;
+    }).join('');
+
+    tableHtml = `<div class="slot-table">${rows}</div>`;
+  }
+
+  const headerHtml = state.form.date
+    ? `<div class="slot-table-header">▼ ${formatDateLabel(state.form.date)}の開放状況（タップで切り替え）</div>`
+    : '';
 
   return `
     <div style="padding:12px 16px 0;">
       ${renderCalendar()}
-      ${formHtml}
-    </div>`;
+    </div>
+    ${headerHtml}
+    ${tableHtml}`;
 }
 
-async function handleAddSlot() {
-  const { date, startTime, endTime, note } = state.form;
-  if (!date)                { showToast('日付を選択してください', true); return; }
-  if (startTime >= endTime) { showToast('終了時間は開始時間より後にしてください', true); return; }
-
+async function loadDayStatus(dateStr) {
+  state.dayStatusLoading = true;
+  renderContent();
   try {
-    const result = await apiPost({ action:'addSlot', type:'出張', date, startTime, endTime, note });
-    if (result.error) throw new Error(result.error);
-    showToast('受付スロットを追加しました');
-    state.form.startTime = '10:00';
-    state.form.endTime   = '12:00';
-    state.form.note      = '';
-    renderContent();
+    const result = await apiGet({ action: 'getDayStatus', date: dateStr });
+    state.dayStatus = Array.isArray(result) ? result : [];
   } catch(err) {
-    showToast('追加に失敗しました: ' + err.message, true);
+    state.dayStatus = [];
   }
+  state.dayStatusLoading = false;
+  renderContent();
+}
+
+async function handleToggleSlot(time) {
+  if (state.togglingTime) return; // 二重タップ防止
+  state.togglingTime = time;
+  renderContent();
+  try {
+    const result = await apiPost({ action: 'toggleSlot', date: state.form.date, time });
+    if (result.error) throw new Error(result.error);
+    await loadDayStatus(state.form.date);
+  } catch(err) {
+    showToast('更新に失敗しました: ' + err.message, true);
+  }
+  state.togglingTime = null;
+  renderContent();
 }
 
 // ============================================================

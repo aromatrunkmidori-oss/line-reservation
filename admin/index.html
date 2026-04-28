@@ -250,6 +250,57 @@
       align-items: stretch;
       gap: 0;
     }
+
+    /* ── スロットテーブル（開放状況） ── */
+    .slot-table-header {
+      padding: 10px 16px;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text-secondary);
+      background: var(--bg-base);
+      border-top: 1px solid var(--border-light);
+      border-bottom: 1px solid var(--border-light);
+      letter-spacing: .05em;
+    }
+    .slot-table { background: var(--bg-card); }
+    .slot-row {
+      display: flex;
+      align-items: center;
+      padding: 11px 16px;
+      border-bottom: 1px solid var(--border-light);
+      cursor: pointer;
+      gap: 12px;
+      transition: background .1s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .slot-row:active  { background: var(--bg-base); }
+    .slot-row.toggling { opacity: .45; cursor: default; }
+    .slot-row-time {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-primary);
+      width: 48px;
+      flex-shrink: 0;
+    }
+    .slot-row-status {
+      font-size: 20px;
+      font-weight: 700;
+      width: 26px;
+      flex-shrink: 0;
+      text-align: center;
+      line-height: 1;
+    }
+    .slot-row-status.open   { color: #2E7D32; }
+    .slot-row-status.closed { color: #BDBDBD; }
+    .slot-row-info {
+      font-size: 12px;
+      color: var(--text-secondary);
+      flex: 1;
+    }
+    .slot-row-info.reserved {
+      color: #E65100;
+      font-weight: 600;
+    }
   </style>
 </head>
 <body>
