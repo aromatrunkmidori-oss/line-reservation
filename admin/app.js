@@ -35,12 +35,14 @@ const state = {
   calendarMonth: (() => {
     const d = new Date(); d.setDate(1); d.setHours(0,0,0,0); return d;
   })(),
+  monthSummary: {},  // { "2025-05-10": "open" | "reserved" } カレンダーマーカー用
   // スロット追加フォーム（スロット追加タブの選択日付）
   form: { date: '', startTime: '10:00', endTime: '12:00', note: '' },
   // スロット管理タブ：30分ブロックの開放状況
   dayStatus: [],
+  originalDayStatus: [],  // サーバーから取得した元の状態（差分検出用）
   dayStatusLoading: false,
-  togglingTime: null,
+  savingSlots: false,
   // スロット編集
   editingSlotId: null,
   editForm: { startTime: '10:00', endTime: '12:00', note: '' },
@@ -157,7 +159,11 @@ function switchTab(tab) {
   state.tab = tab;
   state.editingSlotId = null;
   renderMain();
-  if (tab === 'slots' || tab === 'slotStatus') loadSlots();
+  if (tab === 'slots') {
+    loadSlots();
+    loadMonthSummary(state.calendarMonth.getFullYear(), state.calendarMonth.getMonth() + 1);
+  }
+  if (tab === 'slotStatus') loadSlots();
 }
 
 // ============================================================
@@ -168,11 +174,25 @@ function changeCalendarMonth(delta) {
   d.setMonth(d.getMonth() + delta);
   state.calendarMonth = d;
   renderContent();
+  loadMonthSummary(d.getFullYear(), d.getMonth() + 1);
+}
+
+async function loadMonthSummary(year, month) {
+  try {
+    const result = await apiGet({ action: 'getMonthSummary', year, month });
+    if (result && typeof result === 'object' && !result.error) {
+      state.monthSummary = result;
+      renderContent();
+    }
+  } catch(err) {
+    // サマリー取得失敗はマーカー非表示で無視
+  }
 }
 
 function selectCalendarDate(dateStr) {
-  state.form.date = dateStr;
-  state.dayStatus = [];
+  state.form.date      = dateStr;
+  state.dayStatus      = [];
+  state.originalDayStatus = [];
   renderContent();
   loadDayStatus(dateStr);
 }
@@ -209,7 +229,19 @@ function renderCalendar() {
     }
 
     const onclick = isPast ? '' : `onclick="selectCalendarDate('${dateStr}')"`;
-    cells += `<div class="${cls}" ${colorStyle} ${onclick}>${d}</div>`;
+
+    // カレンダーマーカー（○=開放あり、予=予約あり）
+    const summary = state.monthSummary[dateStr];
+    let markHtml = '';
+    if (!isPast && summary === 'reserved') {
+      markHtml = `<span class="cal-day-mark reserved">予</span>`;
+    } else if (!isPast && summary === 'open') {
+      markHtml = `<span class="cal-day-mark open">○</span>`;
+    } else {
+      markHtml = `<span class="cal-day-mark"></span>`;
+    }
+
+    cells += `<div class="${cls}" ${colorStyle} ${onclick}><span class="cal-day-num">${d}</span>${markHtml}</div>`;
   }
 
   return `
@@ -273,8 +305,18 @@ function changeDate(days) {
 // ============================================================
 // スロット管理タブ（カレンダー＋開放状況テーブル）
 // ============================================================
+// ローカル変更があるか判定
+function isDirty() {
+  if (!state.originalDayStatus.length) return false;
+  return state.dayStatus.some((b, i) => {
+    const orig = state.originalDayStatus[i];
+    return orig && b.isOpen !== orig.isOpen;
+  });
+}
+
 function renderSlotsTab() {
   let tableHtml = '';
+  let saveBarHtml = '';
 
   if (!state.form.date) {
     tableHtml = `<div class="empty-state" style="padding:20px 0;">カレンダーから日付を選んでください</div>`;
@@ -287,7 +329,6 @@ function renderSlotsTab() {
     tableHtml = `<div class="empty-state">データを読み込めませんでした</div>`;
   } else {
     const rows = state.dayStatus.map(block => {
-      const isToggling  = state.togglingTime === block.time;
       const statusClass = block.isOpen ? 'open' : 'closed';
       const statusIcon  = block.isOpen ? '○' : '✕';
 
@@ -300,21 +341,30 @@ function renderSlotsTab() {
         infoText = '予約なし';
       }
 
-      const onclick = isToggling
-        ? ''
-        : block.reservation
-          ? `onclick="showToast('この時間帯には予約があります', true)"`
-          : `onclick="handleToggleSlot('${block.time}')"`;
+      const onclick = block.reservation
+        ? `onclick="showToast('この時間帯には予約があります', true)"`
+        : `onclick="localToggleSlot('${block.time}')"`;
 
       return `
-        <div class="slot-row ${statusClass} ${isToggling ? 'toggling' : ''}" ${onclick}>
+        <div class="slot-row ${statusClass}" ${onclick}>
           <span class="slot-row-time">${block.time}</span>
-          <span class="slot-row-status ${statusClass}">${isToggling ? '…' : statusIcon}</span>
+          <span class="slot-row-status ${statusClass}">${statusIcon}</span>
           <span class="slot-row-info ${infoClass}">${infoText}</span>
         </div>`;
     }).join('');
 
     tableHtml = `<div class="slot-table">${rows}</div>`;
+
+    // 変更がある場合のみ保存バーを表示
+    if (isDirty()) {
+      saveBarHtml = `
+        <div class="slot-save-bar">
+          <button class="btn btn-primary" style="width:100%;"
+                  onclick="handleSaveDaySlots()" ${state.savingSlots ? 'disabled' : ''}>
+            ${state.savingSlots ? '保存中...' : '変更を保存する'}
+          </button>
+        </div>`;
+    }
   }
 
   const headerHtml = state.form.date
@@ -326,7 +376,8 @@ function renderSlotsTab() {
       ${renderCalendar()}
     </div>
     ${headerHtml}
-    ${tableHtml}`;
+    ${tableHtml}
+    ${saveBarHtml}`;
 }
 
 async function loadDayStatus(dateStr) {
@@ -334,26 +385,51 @@ async function loadDayStatus(dateStr) {
   renderContent();
   try {
     const result = await apiGet({ action: 'getDayStatus', date: dateStr });
-    state.dayStatus = Array.isArray(result) ? result : [];
+    const blocks = Array.isArray(result) ? result : [];
+    state.dayStatus         = blocks;
+    state.originalDayStatus = blocks.map(b => ({ ...b })); // ディープコピー
   } catch(err) {
-    state.dayStatus = [];
+    state.dayStatus         = [];
+    state.originalDayStatus = [];
   }
   state.dayStatusLoading = false;
   renderContent();
 }
 
-async function handleToggleSlot(time) {
-  if (state.togglingTime) return; // 二重タップ防止
-  state.togglingTime = time;
-  renderContent();
-  try {
-    const result = await apiPost({ action: 'toggleSlot', date: state.form.date, time });
-    if (result.error) throw new Error(result.error);
-    await loadDayStatus(state.form.date);
-  } catch(err) {
-    showToast('更新に失敗しました: ' + err.message, true);
+// ローカルのみのトグル（API呼び出しなし）
+function localToggleSlot(time) {
+  const block = state.dayStatus.find(b => b.time === time);
+  if (block) {
+    block.isOpen = !block.isOpen;
+    renderContent();
   }
-  state.togglingTime = null;
+}
+
+// 変更を一括保存
+async function handleSaveDaySlots() {
+  if (state.savingSlots) return;
+  state.savingSlots = true;
+  renderContent();
+
+  const openTimes = state.dayStatus.filter(b => b.isOpen).map(b => b.time);
+
+  try {
+    const result = await apiPost({
+      action: 'saveDaySlots',
+      date: state.form.date,
+      openTimes,
+    });
+    if (result.error) throw new Error(result.error);
+    showToast('保存しました');
+    // 保存後はサーバーから再取得して originalDayStatus とカレンダーマーカーを更新
+    await Promise.all([
+      loadDayStatus(state.form.date),
+      loadMonthSummary(state.calendarMonth.getFullYear(), state.calendarMonth.getMonth() + 1),
+    ]);
+  } catch(err) {
+    showToast('保存に失敗しました: ' + err.message, true);
+  }
+  state.savingSlots = false;
   renderContent();
 }
 
@@ -455,6 +531,7 @@ async function handleUpdateSlot(slotId) {
     showToast('更新しました');
     state.editingSlotId = null;
     await loadSlots();
+    loadMonthSummary(state.calendarMonth.getFullYear(), state.calendarMonth.getMonth() + 1);
   } catch(err) {
     showToast('更新に失敗しました: ' + err.message, true);
   }
@@ -467,6 +544,7 @@ async function handleDeleteSlot(slotId) {
     if (result.error) throw new Error(result.error);
     showToast('削除しました');
     await loadSlots();
+    loadMonthSummary(state.calendarMonth.getFullYear(), state.calendarMonth.getMonth() + 1);
   } catch(err) {
     showToast('削除に失敗しました: ' + err.message, true);
   }
@@ -514,6 +592,8 @@ async function initApp() {
     state.reservations = Array.isArray(reservations) ? reservations : [];
     state.phase = 'main';
     renderMain();
+    // バックグラウンドでカレンダーマーカーを読み込む
+    loadMonthSummary(state.calendarMonth.getFullYear(), state.calendarMonth.getMonth() + 1);
   } catch(err) {
     document.getElementById('app').innerHTML = `
       <div class="loading-screen">

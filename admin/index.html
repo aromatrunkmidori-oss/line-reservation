@@ -221,18 +221,30 @@
       gap: 2px;
     }
     .cal-cell {
-      aspect-ratio: 1;
       display: flex;
+      flex-direction: column;
       align-items: center;
-      justify-content: center;
-      font-size: 14px;
-      border-radius: 50%;
+      justify-content: flex-start;
+      padding: 5px 0 3px;
+      min-height: 44px;
+      border-radius: 8px;
       cursor: pointer;
       color: var(--text-primary);
     }
+    .cal-day-num  { font-size: 14px; line-height: 1.2; }
+    .cal-day-mark {
+      font-size: 8px;
+      font-weight: 800;
+      line-height: 1;
+      margin-top: 2px;
+      height: 10px;
+    }
+    .cal-day-mark.open     { color: #2E7D32; }
+    .cal-day-mark.reserved { color: #E65100; }
     .cal-past    { color: var(--text-secondary); opacity: .4; cursor: default; }
     .cal-today   { background: #E8F5E9; color: var(--primary); font-weight: 700; }
-    .cal-selected { background: var(--primary); color: #fff; font-weight: 700; }
+    .cal-selected { background: var(--primary); color: #fff !important; font-weight: 700; }
+    .cal-selected .cal-day-mark { color: rgba(255,255,255,0.85) !important; }
 
     /* ── 編集ボタン ── */
     .slot-edit-btn {
@@ -300,6 +312,16 @@
     .slot-row-info.reserved {
       color: #E65100;
       font-weight: 600;
+    }
+
+    /* ── 一括保存バー ── */
+    .slot-save-bar {
+      position: sticky;
+      bottom: 72px;
+      background: var(--bg-card);
+      border-top: 2px solid var(--border-light);
+      padding: 12px 16px;
+      z-index: 20;
     }
   </style>
 </head>
