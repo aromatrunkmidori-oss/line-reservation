@@ -365,17 +365,21 @@ input, textarea { font-family: inherit; }
 .cal-day-header:first-child { color: #B85450; }
 .cal-day-header:last-child  { color: #4A6FA5; }
 .cal-day {
-  aspect-ratio: 1;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  border-radius: 50%;
+  border-radius: 8px;
   font-size: 14px;
   cursor: pointer;
   transition: all 0.15s;
   margin: 1px auto;
-  max-width: 38px;
+  max-width: 42px;
   width: 100%;
+  padding: 5px 0 3px;
+  gap: 1px;
+  min-height: 44px;
+  line-height: 1;
 }
 .cal-day.empty   { cursor: default; }
 .cal-day.disabled {
@@ -398,6 +402,19 @@ input, textarea { font-family: inherit; }
 }
 .cal-day.sunday:not(.disabled):not(.selected)  { color: #B85450; }
 .cal-day.saturday:not(.disabled):not(.selected) { color: #4A6FA5; }
+
+/* ── 空き状況インジケーター ── */
+.cal-avail {
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  min-height: 10px;
+  display: block;
+}
+.avail-ok      { color: #2E7D32; }
+.avail-ng      { color: #BDBDBD; }
+.avail-loading { color: var(--text-muted); letter-spacing: -1px; }
+.cal-day.selected .cal-avail { color: rgba(255,255,255,0.85); }
 
 /* ---------- STEP 5：時間スロット ---------- */
 .slot-date-label {

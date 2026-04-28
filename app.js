@@ -74,6 +74,10 @@ const state = {
     calendarMonth:  new Date().getMonth(),
     availableSlots: null,
     loadingSlots:   false,
+    // 月間空き状況インジケーター
+    monthAvailability:        {},   // dateStr → 'available'|'full'|'unavailable'|'past'|'holiday'
+    monthAvailabilityKey:     '',   // キャッシュキー（月・種別・時間が変わったら再取得）
+    monthAvailabilityLoading: false,
   },
   reservation: null,
 };
@@ -282,6 +286,11 @@ function render() {
     <div class="btn-area" id="btn-area"></div>`;
 
   renderButtons();
+
+  // 日付ステップを表示したとき、月間空き状況を非同期で取得
+  if (state.phase === 'form' && state.step === stepNum('date')) {
+    loadMonthAvailability();
+  }
 }
 
 // ============================================================
@@ -688,8 +697,28 @@ function renderDatePicker() {
       isTod ? 'today' : '',
       dow === 0 ? 'sunday' : dow === 6 ? 'saturday' : '',
     ].filter(Boolean).join(' ');
-    gridHtml += `<div class="${classes}"
-      ${!isPast && !isHol ? `onclick="selectDate('${dateStr}')"` : ''}>${d}</div>`;
+
+    // ○/× インジケーター
+    let availCls  = 'cal-avail';
+    let availText = '';
+    if (!isPast && !isHol) {
+      const avStat = state.ui.monthAvailability[dateStr];
+      if (avStat === 'available') {
+        availCls  = 'cal-avail avail-ok';
+        availText = '○';
+      } else if (avStat === 'full' || avStat === 'unavailable') {
+        availCls  = 'cal-avail avail-ng';
+        availText = '×';
+      } else if (state.ui.monthAvailabilityLoading) {
+        availCls  = 'cal-avail avail-loading';
+        availText = '…';
+      }
+    }
+
+    gridHtml += `<div class="${classes}" data-date="${dateStr}"
+      ${!isPast && !isHol ? `onclick="selectDate('${dateStr}')"` : ''}>
+      ${d}<span class="${availCls}" id="avail-${dateStr}">${availText}</span>
+    </div>`;
   }
   gridHtml += '</div>';
 
@@ -711,9 +740,71 @@ function changeMonth(delta) {
   let y = state.ui.calendarYear;
   if (m < 0)  { m = 11; y--; }
   if (m > 11) { m = 0;  y++; }
-  state.ui.calendarMonth = m;
-  state.ui.calendarYear  = y;
+  state.ui.calendarMonth        = m;
+  state.ui.calendarYear         = y;
+  state.ui.monthAvailability    = {};  // 月が変わったらキャッシュクリア
+  state.ui.monthAvailabilityKey = '';
   render();
+  loadMonthAvailability();
+}
+
+// ============================================================
+// 月間空き状況を非同期で取得し、インジケーターだけ外科的に更新
+// ============================================================
+async function loadMonthAvailability() {
+  const duration = isVisit() ? getTotalDuration() : state.form.duration;
+  if (!duration || !state.form.serviceType) return;
+
+  const { calendarYear: year, calendarMonth: month } = state.ui;
+  const cacheKey = `${year}-${month}-${state.form.serviceType}-${duration}`;
+  if (state.ui.monthAvailabilityKey === cacheKey) return; // キャッシュ済み
+  if (state.ui.monthAvailabilityLoading)           return; // 取得中
+
+  state.ui.monthAvailabilityLoading = true;
+
+  // ローディング表示（…）
+  document.querySelectorAll('[id^="avail-"]').forEach(el => {
+    if (!el.closest('.cal-day.disabled')) {
+      el.className   = 'cal-avail avail-loading';
+      el.textContent = '…';
+    }
+  });
+
+  try {
+    const result = await apiGet('getMonthAvailability', {
+      year,
+      month:       month + 1,  // JS は 0始まり、GAS は 1始まり
+      duration,
+      serviceType: state.form.serviceType,
+    });
+    state.ui.monthAvailability    = result;
+    state.ui.monthAvailabilityKey = cacheKey;
+  } catch(err) {
+    console.error('月間空き確認失敗:', err);
+    state.ui.monthAvailability = {};
+  }
+
+  state.ui.monthAvailabilityLoading = false;
+  _updateCalendarIndicators();
+}
+
+// インジケータースパンだけDOMを外科的に更新（カレンダー全体は再描画しない）
+function _updateCalendarIndicators() {
+  const avail = state.ui.monthAvailability;
+  Object.entries(avail).forEach(([dateStr, status]) => {
+    const el = document.getElementById(`avail-${dateStr}`);
+    if (!el) return;
+    if (status === 'available') {
+      el.className   = 'cal-avail avail-ok';
+      el.textContent = '○';
+    } else if (status === 'full' || status === 'unavailable') {
+      el.className   = 'cal-avail avail-ng';
+      el.textContent = '×';
+    } else {
+      el.className   = 'cal-avail';
+      el.textContent = '';
+    }
+  });
 }
 
 function selectDate(dateStr) {
