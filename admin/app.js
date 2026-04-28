@@ -201,13 +201,16 @@ function renderReservationsTab() {
 
   const sections = Object.keys(byDate).sort().map(date => {
     const cards = byDate[date].map(r => {
-      const badgeClass = r.serviceType === '来店' ? 'badge-visit' : 'badge-mobile';
+      const isCancelled = r.status === 'cancelled';
+      const badgeClass  = r.serviceType === '来店' ? 'badge-visit' : 'badge-mobile';
       return `
-        <div class="reservation-card">
+        <div class="reservation-card tappable${isCancelled ? ' cancelled' : ''}"
+             onclick="openReservationDetail('${r.reservationId}')">
           <div class="reservation-time">${r.startTime} 〜 ${r.endTime}</div>
           <div class="reservation-info">
             <span class="service-badge ${badgeClass}">${r.serviceType}</span>
             <span class="reservation-name">${r.customerName}</span>
+            ${isCancelled ? '<span class="badge-cancelled">キャンセル済</span>' : ''}
           </div>
           <div class="reservation-menu">${r.menuName}（${r.duration}分）</div>
           ${r.address ? `<div class="reservation-menu" style="margin-top:4px;">📍 ${r.address}</div>` : ''}
@@ -219,6 +222,117 @@ function renderReservationsTab() {
   }).join('');
 
   return `<div class="reservation-list">${sections}</div>`;
+}
+
+// ============================================================
+// 予約詳細モーダル
+// ============================================================
+function openReservationDetail(reservationId) {
+  const r = state.futureReservations.find(x => x.reservationId === reservationId);
+  if (!r) return;
+
+  const isCancelled = r.status === 'cancelled';
+  const badgeClass  = r.serviceType === '来店' ? 'badge-visit' : 'badge-mobile';
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.id = 'detail-modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal-sheet" id="detail-modal-sheet">
+      <div class="modal-handle"></div>
+      <div class="modal-header">
+        <span class="modal-title">予約詳細</span>
+        <button class="modal-close" onclick="closeReservationDetail()">✕</button>
+      </div>
+      ${isCancelled ? '<div class="modal-cancelled-banner">キャンセル済みの予約です</div>' : ''}
+      <div class="modal-body">
+        <div class="detail-row">
+          <span class="detail-label">日時</span>
+          <span class="detail-value">${formatDateLabel(r.date)}<br>${r.startTime} 〜 ${r.endTime}</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">お客様</span>
+          <span class="detail-value">${r.customerName}</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">メニュー</span>
+          <span class="detail-value">${r.menuName}（${r.duration}分）</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">種別</span>
+          <span class="detail-value"><span class="service-badge ${badgeClass}">${r.serviceType}</span></span>
+        </div>
+        ${r.address ? `
+        <div class="detail-row">
+          <span class="detail-label">住所</span>
+          <span class="detail-value">${r.address}</span>
+        </div>` : ''}
+      </div>
+      ${!isCancelled ? `
+      <div class="modal-footer">
+        <button class="btn-cancel-reservation" id="cancel-reservation-btn"
+                onclick="handleAdminCancel('${r.reservationId}')">
+          この予約をキャンセルする
+        </button>
+      </div>` : ''}
+    </div>`;
+
+  overlay.addEventListener('click', e => {
+    if (e.target === overlay) closeReservationDetail();
+  });
+
+  document.body.appendChild(overlay);
+  requestAnimationFrame(() => {
+    overlay.classList.add('visible');
+    const sheet = document.getElementById('detail-modal-sheet');
+    if (sheet) sheet.classList.add('visible');
+  });
+}
+
+function closeReservationDetail() {
+  const overlay = document.getElementById('detail-modal-overlay');
+  if (!overlay) return;
+  overlay.classList.remove('visible');
+  const sheet = document.getElementById('detail-modal-sheet');
+  if (sheet) sheet.classList.remove('visible');
+  setTimeout(() => overlay.remove(), 300);
+}
+
+async function handleAdminCancel(reservationId) {
+  const r = state.futureReservations.find(x => x.reservationId === reservationId);
+  if (!r) return;
+
+  const btn = document.getElementById('cancel-reservation-btn');
+
+  // 確認ステップ：ボタンを「本当にキャンセル」に切り替え
+  if (btn && btn.dataset.confirmed !== 'yes') {
+    btn.dataset.confirmed = 'yes';
+    btn.textContent = '本当にキャンセルする（お客様に通知が届きます）';
+    btn.style.background = '#B71C1C';
+    return;
+  }
+
+  if (btn) { btn.disabled = true; btn.textContent = 'キャンセル処理中...'; }
+
+  try {
+    const result = await apiPost({ action: 'adminCancelReservation', reservationId });
+    if (result.error) throw new Error(result.error);
+
+    // ローカル状態を更新
+    if (r) r.status = 'cancelled';
+
+    closeReservationDetail();
+    showToast('予約をキャンセルしました');
+    renderContent();
+  } catch(err) {
+    showToast('キャンセルに失敗しました: ' + err.message, true);
+    if (btn) {
+      btn.disabled = false;
+      btn.dataset.confirmed = '';
+      btn.textContent = 'この予約をキャンセルする';
+      btn.style.background = '';
+    }
+  }
 }
 
 // ============================================================
