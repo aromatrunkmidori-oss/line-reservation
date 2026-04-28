@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>trunk 管理</title>
+  <link rel="stylesheet" href="../style.css">
+  <style>
+    /* ── タブバー ── */
+    .admin-tab-bar {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      display: flex;
+      background: var(--bg-card);
+      border-top: 1px solid var(--border-light);
+      padding-bottom: env(safe-area-inset-bottom);
+      z-index: 100;
+    }
+    .admin-tab-btn {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      padding: 10px 0;
+      background: none;
+      border: none;
+      font-size: 11px;
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: color .2s;
+    }
+    .admin-tab-btn.active { color: var(--primary); }
+    .admin-tab-icon { font-size: 22px; }
+
+    /* ── コンテンツ ── */
+    .admin-content {
+      padding-bottom: 72px;
+      min-height: calc(100vh - 60px);
+    }
+
+    /* ── 日付ナビ ── */
+    .date-nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      background: var(--bg-card);
+      border-bottom: 1px solid var(--border-light);
+      position: sticky;
+      top: 60px;
+      z-index: 10;
+    }
+    .date-nav-btn {
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 50%;
+      width: 36px; height: 36px;
+      font-size: 20px;
+      color: var(--text-primary);
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .date-nav-label {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    /* ── 予約カード ── */
+    .reservation-list {
+      padding: 12px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .reservation-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+      box-shadow: var(--shadow-sm);
+    }
+    .reservation-time {
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 6px;
+    }
+    .reservation-info {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+    .service-badge {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 20px;
+      white-space: nowrap;
+    }
+    .badge-visit  { background: #E8F5E9; color: #2E7D32; }
+    .badge-mobile { background: #FFF3E0; color: #E65100; }
+    .reservation-name { font-size: 15px; font-weight: 600; }
+    .reservation-menu { font-size: 13px; color: var(--text-secondary); margin-top: 2px; }
+
+    /* ── スロット ── */
+    .slot-list { padding: 12px 16px; }
+    .slot-group { margin-bottom: 20px; }
+    .slot-group-date {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text-secondary);
+      margin-bottom: 6px;
+      padding-left: 4px;
+      letter-spacing: .05em;
+    }
+    .slot-item {
+      background: var(--bg-card);
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius-sm);
+      padding: 12px 14px;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: var(--shadow-sm);
+    }
+    .slot-time { font-size: 15px; font-weight: 600; }
+    .slot-note { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+    .slot-delete-btn {
+      background: none;
+      border: 1px solid #EF5350;
+      color: #EF5350;
+      border-radius: var(--radius-sm);
+      padding: 5px 12px;
+      font-size: 12px;
+      cursor: pointer;
+      flex-shrink: 0;
+      margin-left: 12px;
+    }
+
+    /* ── 追加フォーム ── */
+    .add-slot-form {
+      background: var(--bg-card);
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius);
+      padding: 16px;
+      margin: 12px 16px;
+      box-shadow: var(--shadow-sm);
+    }
+    .add-slot-form-title {
+      font-size: 14px;
+      font-weight: 700;
+      margin-bottom: 14px;
+      color: var(--text-primary);
+    }
+    .time-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    /* ── 空表示 ── */
+    .empty-state {
+      text-align: center;
+      padding: 48px 24px;
+      color: var(--text-secondary);
+      font-size: 14px;
+    }
+
+    /* ── エラートースト ── */
+    .toast-error { background: #EF5350 !important; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div class="loading-screen">
+      <div class="loading-logo">trunk</div>
+      <div class="spinner"></div>
+    </div>
+  </div>
+
+  <!-- LIFF SDK（本番用） -->
+  <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+
+  <!-- LIFF モック（ローカルテスト用）
+  <script>
+    window.liff = {
+      init:        () => Promise.resolve(),
+      isInClient:  () => true,
+      isLoggedIn:  () => true,
+      getProfile:  () => Promise.resolve({
+        userId: 'OWNER_LINE_USER_IDをここに入力',
+        displayName: 'オーナー',
+        pictureUrl: '',
+      }),
+      closeWindow: () => alert('閉じる'),
+    };
+  </script>
+  -->
+
+  <script src="app.js"></script>
+</body>
+</html>
