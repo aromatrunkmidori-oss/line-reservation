@@ -162,6 +162,8 @@ function switchTab(tab) {
   if (tab === 'slots') {
     loadSlots();
     loadMonthSummary(state.calendarMonth.getFullYear(), state.calendarMonth.getMonth() + 1);
+    // 日付選択済みの場合はブロックテーブルも再取得（枠の状況タブでの編集を反映）
+    if (state.form.date) loadDayStatus(state.form.date);
   }
   if (tab === 'slotStatus') loadSlots();
 }
@@ -230,15 +232,17 @@ function renderCalendar() {
 
     const onclick = isPast ? '' : `onclick="selectCalendarDate('${dateStr}')"`;
 
-    // カレンダーマーカー（○=開放あり、予=予約あり）
+    // カレンダーマーカー（○=開放あり、予=予約あり、✕=全クローズ）
     const summary = state.monthSummary[dateStr];
     let markHtml = '';
-    if (!isPast && summary === 'reserved') {
+    if (isPast) {
+      markHtml = `<span class="cal-day-mark"></span>`;
+    } else if (summary === 'reserved') {
       markHtml = `<span class="cal-day-mark reserved">予</span>`;
-    } else if (!isPast && summary === 'open') {
+    } else if (summary === 'open') {
       markHtml = `<span class="cal-day-mark open">○</span>`;
     } else {
-      markHtml = `<span class="cal-day-mark"></span>`;
+      markHtml = `<span class="cal-day-mark closed">✕</span>`;
     }
 
     cells += `<div class="${cls}" ${colorStyle} ${onclick}><span class="cal-day-num">${d}</span>${markHtml}</div>`;
@@ -532,6 +536,8 @@ async function handleUpdateSlot(slotId) {
     state.editingSlotId = null;
     await loadSlots();
     loadMonthSummary(state.calendarMonth.getFullYear(), state.calendarMonth.getMonth() + 1);
+    // スロット追加タブで表示中の日付があれば再取得
+    if (state.form.date) loadDayStatus(state.form.date);
   } catch(err) {
     showToast('更新に失敗しました: ' + err.message, true);
   }
@@ -545,6 +551,8 @@ async function handleDeleteSlot(slotId) {
     showToast('削除しました');
     await loadSlots();
     loadMonthSummary(state.calendarMonth.getFullYear(), state.calendarMonth.getMonth() + 1);
+    // スロット追加タブで表示中の日付があれば再取得
+    if (state.form.date) loadDayStatus(state.form.date);
   } catch(err) {
     showToast('削除に失敗しました: ' + err.message, true);
   }
