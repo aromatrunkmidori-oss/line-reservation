@@ -447,7 +447,25 @@
     }
 
     /* ── モーダルフッター ── */
-    .modal-footer { padding: 0 16px 16px; }
+    .modal-footer {
+      padding: 0 16px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .btn-reschedule-reservation {
+      width: 100%;
+      background: transparent;
+      color: var(--primary);
+      border: 2px solid var(--primary);
+      border-radius: var(--radius);
+      padding: 13px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: opacity .15s;
+    }
+    .btn-reschedule-reservation:active { opacity: .7; }
     .btn-cancel-reservation {
       width: 100%;
       background: #EF5350;
@@ -462,6 +480,100 @@
     }
     .btn-cancel-reservation:disabled { opacity: .5; cursor: default; }
     .btn-cancel-reservation:not(:disabled):active { opacity: .8; }
+
+    /* ── 日時変更フォーム ── */
+    .reschedule-form {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .reschedule-date-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .reschedule-date-input {
+      flex: 1;
+      padding: 9px 10px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-size: 14px;
+      color: var(--text-primary);
+      background: var(--bg);
+    }
+    .reschedule-check-btn {
+      white-space: nowrap;
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius-sm);
+      padding: 9px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .reschedule-check-btn:disabled { opacity: .5; cursor: default; }
+    .reschedule-slots-container {
+      max-height: 160px;
+      overflow-y: auto;
+    }
+    .reschedule-loading,
+    .reschedule-no-slots {
+      font-size: 13px;
+      color: var(--text-secondary);
+      text-align: center;
+      padding: 12px 0;
+    }
+    .reschedule-slots-label {
+      font-size: 12px;
+      color: var(--text-secondary);
+      margin-bottom: 6px;
+    }
+    .reschedule-slots-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .reschedule-slot-btn {
+      padding: 6px 14px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-primary);
+      cursor: pointer;
+      transition: background .15s, color .15s, border-color .15s;
+    }
+    .reschedule-slot-btn.selected {
+      background: var(--primary);
+      color: #fff;
+      border-color: var(--primary);
+    }
+    .btn-confirm-reschedule {
+      width: 100%;
+      background: #2E7D32;
+      color: #fff;
+      border: none;
+      border-radius: var(--radius);
+      padding: 14px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: opacity .15s;
+      line-height: 1.4;
+    }
+    .btn-confirm-reschedule:disabled { opacity: .5; cursor: default; }
+    .btn-confirm-reschedule:not(:disabled):active { opacity: .8; }
+    .btn-back-reschedule {
+      background: none;
+      border: none;
+      color: var(--text-secondary);
+      font-size: 13px;
+      cursor: pointer;
+      padding: 4px 0;
+      text-align: left;
+    }
   </style>
 </head>
 <body>

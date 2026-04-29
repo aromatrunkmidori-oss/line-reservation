@@ -753,3 +753,162 @@ input, textarea { font-family: inherit; }
   font-size: 13px;
   letter-spacing: 0.05em;
 }
+
+/* ============================================================
+   顧客向け 日時グリッド
+   ============================================================ */
+
+/* ナビゲーション（前の14日／次の14日） */
+.cg-nav {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.cg-nav-btn {
+  flex: 1;
+  padding: 8px 4px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--primary);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.cg-nav-btn:disabled {
+  color: var(--text-muted);
+  cursor: default;
+}
+
+/* 選択中バナー */
+.cg-banner {
+  background: var(--primary);
+  color: #fff;
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  margin-bottom: 8px;
+  transition: opacity .2s;
+}
+.cg-banner.hidden { display: none; }
+.cg-banner-text { line-height: 1.5; }
+
+/* スクロールコンテナ */
+.cg-scroll {
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  /* コンテンツエリアの高さに収まるように最大高を制限 */
+  max-height: calc(100vh - 320px);
+}
+
+/* テーブル本体 */
+.cg-table {
+  border-collapse: collapse;
+  min-width: max-content;
+}
+
+/* 左上コーナー（sticky top + left） */
+.cg-corner {
+  position: sticky;
+  top: 0; left: 0;
+  z-index: 30;
+  background: var(--bg-card);
+  min-width: 52px;
+  font-size: 10px;
+  color: var(--text-secondary);
+  text-align: center;
+  padding: 5px 3px;
+  border-right: 2px solid var(--border);
+  border-bottom: 2px solid var(--border);
+}
+
+/* 日付ヘッダー（sticky top） */
+.cg-th {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: var(--bg-card);
+  min-width: 46px;
+  text-align: center;
+  padding: 5px 2px;
+  border-right: 1px solid var(--border-light);
+  border-bottom: 2px solid var(--border);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+.cg-th.cg-today { background: var(--primary-pale); color: var(--primary); }
+.cg-th.cg-sun   { color: #C0392B; }
+.cg-th.cg-sat   { color: #1565C0; }
+.cg-dow { font-weight: 400; font-size: 10px; }
+
+/* 時間ラベル（sticky left） */
+.cg-time-td {
+  position: sticky;
+  left: 0;
+  z-index: 10;
+  background: var(--bg-card);
+  min-width: 52px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-align: right;
+  padding: 0 6px 0 0;
+  border-right: 2px solid var(--border);
+  border-bottom: 1px solid var(--border-light);
+  white-space: nowrap;
+  height: 40px;
+}
+
+/* データセル 共通 */
+.cg-cell {
+  min-width: 46px;
+  height: 40px;
+  text-align: center;
+  vertical-align: middle;
+  border-right: 1px solid var(--border-light);
+  border-bottom: 1px solid var(--border-light);
+  font-size: 15px;
+  font-weight: 700;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+/* 空き枠あり（タップ可） */
+.cg-cell.cg-open {
+  background: var(--primary-pale);
+  color: var(--primary);
+  cursor: pointer;
+}
+.cg-cell.cg-open:active { background: #d0e4d0; }
+
+/* 選択中 */
+.cg-cell.cg-sel {
+  background: var(--primary);
+  color: #fff;
+  cursor: pointer;
+  box-shadow: inset 0 0 0 2px var(--primary-light);
+}
+
+/* 空き枠なし */
+.cg-cell.cg-closed {
+  background: #FAFAFA;
+  color: #D0D0D0;
+  font-size: 13px;
+  cursor: default;
+}
+
+/* 空き枠ゼロ行 */
+.cg-empty-row {
+  text-align: center;
+  padding: 24px 12px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}

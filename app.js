@@ -70,33 +70,30 @@ const state = {
     isEditing:   false,
   },
   ui: {
-    calendarYear:   new Date().getFullYear(),
-    calendarMonth:  new Date().getMonth(),
-    availableSlots: null,
-    loadingSlots:   false,
-    // 月間空き状況インジケーター
-    monthAvailability:        {},   // dateStr → 'available'|'full'|'unavailable'|'past'|'holiday'
-    monthAvailabilityKey:     '',   // キャッシュキー（月・種別・時間が変わったら再取得）
-    monthAvailabilityLoading: false,
+    // 日時グリッド
+    gridStartDate:    '',    // 表示中の開始日（YYYY-MM-DD）
+    gridAvailability: null,  // { "2025-05-01": ["10:00",...] | null }
+    gridLoading:      false,
+    gridCacheKey:     '',    // 再取得判定用キー
   },
   reservation: null,
 };
 
 // ============================================================
-// ステップ構成
-// 来店: 1=種別 2=コース 3=オプション 4=確認 5=日付 6=時間帯 7=顧客情報
-// 出張: 1=種別 2=コース 3=時間     4=日付  5=時間帯 6=確認  7=顧客情報
+// ステップ構成（6ステップ）
+// 来店: 1=種別 2=コース 3=オプション 4=確認   5=日時グリッド 6=顧客情報
+// 出張: 1=種別 2=コース 3=時間       4=日時グリッド 5=確認  6=顧客情報
 // ============================================================
 function isVisit() { return state.form.serviceType === '来店'; }
-function getTotalSteps() { return 7; }
+function getTotalSteps() { return 6; }
 function getStepTitles() {
   return isVisit()
-    ? ['種別', 'コース', 'オプション', '確認', '日付', '時間帯', 'お客様']
-    : ['種別', 'コース', '時間', '日付', '時間帯', '確認', 'お客様'];
+    ? ['種別', 'コース', 'オプション', '確認', '日時', 'お客様']
+    : ['種別', 'コース', '時間', '日時', '確認', 'お客様'];
 }
 function stepNum(name) {
-  const v = { serviceType:1, course:2, option:3, confirm:4, date:5, slot:6, customer:7 };
-  const m = { serviceType:1, course:2, duration:3, date:4, slot:5, confirm:6, customer:7 };
+  const v = { serviceType:1, course:2, option:3, confirm:4, datetime:5, customer:6 };
+  const m = { serviceType:1, course:2, duration:3, datetime:4, confirm:5, customer:6 };
   return (isVisit() ? v : m)[name] || 1;
 }
 
@@ -245,21 +242,19 @@ function render() {
     stepContent = renderStep1();
   } else if (isVisit()) {
     switch (state.step) {
-      case 2: stepContent = renderVisitCourse();  break;
-      case 3: stepContent = renderVisitOption();  break;
-      case 4: stepContent = renderVisitConfirm(); break;
-      case 5: stepContent = renderDatePicker();   break;
-      case 6: stepContent = renderSlots();        break;
-      case 7: stepContent = renderCustomer();     break;
+      case 2: stepContent = renderVisitCourse();    break;
+      case 3: stepContent = renderVisitOption();    break;
+      case 4: stepContent = renderVisitConfirm();   break;
+      case 5: stepContent = renderDateTimeGrid();   break;
+      case 6: stepContent = renderCustomer();       break;
     }
   } else {
     switch (state.step) {
       case 2: stepContent = renderMobileCourse();   break;
       case 3: stepContent = renderMobileDuration(); break;
-      case 4: stepContent = renderDatePicker();     break;
-      case 5: stepContent = renderSlots();          break;
-      case 6: stepContent = renderMobileConfirm();  break;
-      case 7: stepContent = renderCustomer();       break;
+      case 4: stepContent = renderDateTimeGrid();   break;
+      case 5: stepContent = renderMobileConfirm();  break;
+      case 6: stepContent = renderCustomer();       break;
     }
   }
 
@@ -287,9 +282,10 @@ function render() {
 
   renderButtons();
 
-  // 日付ステップを表示したとき、月間空き状況を非同期で取得
-  if (state.phase === 'form' && state.step === stepNum('date')) {
-    loadMonthAvailability();
+  // 日時グリッドステップを表示したとき、空き状況を非同期で取得
+  if (state.phase === 'form' && state.step === stepNum('datetime')) {
+    if (!state.ui.gridStartDate) state.ui.gridStartDate = formatDateStr(new Date());
+    loadGridAvailability();
   }
 }
 
@@ -315,17 +311,13 @@ function renderButtons() {
           ${!optionChosen ? 'disabled' : ''}>内容を確認する　›</button>`;
         break;
       case 4:
-        area.innerHTML = `<button class="btn btn-primary" onclick="goNext()">日付を選ぶ　›</button>`;
+        area.innerHTML = `<button class="btn btn-primary" onclick="goNext()">日時を選ぶ　›</button>`;
         break;
       case 5:
-        area.innerHTML = `<button class="btn btn-primary" onclick="onDateNext()"
-          ${!f.date ? 'disabled' : ''}>この日で時間を選ぶ　›</button>`;
+        area.innerHTML = `<button class="btn btn-primary" onclick="goNext()"
+          ${!f.date || !f.timeSlot ? 'disabled' : ''}>次へ　›</button>`;
         break;
       case 6:
-        area.innerHTML = `<button class="btn btn-primary" onclick="goNext()"
-          ${!f.timeSlot ? 'disabled' : ''}>次へ　›</button>`;
-        break;
-      case 7:
         area.innerHTML = `<button class="btn btn-primary" onclick="submitReservation()">予約を確定する</button>`;
         break;
     }
@@ -340,17 +332,13 @@ function renderButtons() {
           ${!f.duration ? 'disabled' : ''}>次へ　›</button>`;
         break;
       case 4:
-        area.innerHTML = `<button class="btn btn-primary" onclick="onDateNext()"
-          ${!f.date ? 'disabled' : ''}>この日で時間を選ぶ　›</button>`;
+        area.innerHTML = `<button class="btn btn-primary" onclick="goNext()"
+          ${!f.date || !f.timeSlot ? 'disabled' : ''}>次へ　›</button>`;
         break;
       case 5:
-        area.innerHTML = `<button class="btn btn-primary" onclick="goNext()"
-          ${!f.timeSlot ? 'disabled' : ''}>次へ　›</button>`;
-        break;
-      case 6:
         area.innerHTML = `<button class="btn btn-primary" onclick="goNext()">お客様情報を入力する　›</button>`;
         break;
-      case 7:
+      case 6:
         area.innerHTML = `<button class="btn btn-primary" onclick="submitReservation()">予約を確定する</button>`;
         break;
     }
@@ -391,6 +379,7 @@ function selectServiceType(type) {
   state.form.timeSlot    = '';
   state.form.endTime     = '';
   state.form.note        = '';
+  _resetGrid();
   state.step = 2;
   render();
 }
@@ -430,6 +419,7 @@ function selectVisitCourse(el, index) {
   state.form.noOption = false;
   state.form.date     = '';
   state.form.timeSlot = '';
+  _resetGrid();
   renderButtons();
   document.querySelectorAll('.course-item').forEach(e => e.classList.remove('selected'));
   el.classList.add('selected');
@@ -481,6 +471,8 @@ function selectVisitOption(index) {
       state.form.options.push(o);
     }
   }
+  // オプション変更で合計時間が変わるためグリッドをリセット
+  _resetGrid();
   render();
 }
 
@@ -612,7 +604,7 @@ function selectMobileCourse(el, name) {
   state.form.duration = null;
   state.form.date     = '';
   state.form.timeSlot = '';
-  state.ui.availableSlots = null;
+  _resetGrid();
   renderButtons();
   document.querySelectorAll('.course-item').forEach(e => e.classList.remove('selected'));
   el.classList.add('selected');
@@ -652,21 +644,209 @@ function selectDuration(el, min) {
     state.form.duration = null;
     state.form.date     = '';
     state.form.timeSlot = '';
-    state.ui.availableSlots = null;
+    _resetGrid();
     render();
     return;
   }
   state.form.duration = min;
   state.form.date     = '';
   state.form.timeSlot = '';
-  state.ui.availableSlots = null;
+  _resetGrid();
   renderButtons();
   document.querySelectorAll('.course-item').forEach(e => e.classList.remove('selected'));
   el.classList.add('selected');
 }
 
 // ============================================================
-// 日付選択
+// 日時グリッド（顧客向け）
+// ============================================================
+
+// 10:00〜22:00 の30分刻み
+const CUST_GRID_TIMES = (() => {
+  const t = [];
+  for (let m = 10 * 60; m < 22 * 60; m += 30)
+    t.push(`${String(Math.floor(m/60)).padStart(2,'0')}:${String(m%60).padStart(2,'0')}`);
+  return t;
+})();
+const CUST_GRID_DAYS = 14;
+
+function _resetGrid() {
+  state.ui.gridAvailability = null;
+  state.ui.gridCacheKey     = '';
+  state.form.date           = '';
+  state.form.timeSlot       = '';
+  state.form.endTime        = '';
+}
+
+async function loadGridAvailability() {
+  const duration = isVisit() ? getTotalDuration() : state.form.duration;
+  if (!duration || !state.form.serviceType) return;
+
+  if (!state.ui.gridStartDate) state.ui.gridStartDate = formatDateStr(new Date());
+
+  const cacheKey = `${state.form.serviceType}-${duration}-${state.ui.gridStartDate}`;
+  if (state.ui.gridCacheKey === cacheKey && state.ui.gridAvailability) return;
+  if (state.ui.gridLoading) return;
+
+  state.ui.gridLoading = true;
+  render();
+
+  try {
+    const result = await apiGet('getAvailableGrid', {
+      startDate:   state.ui.gridStartDate,
+      days:        CUST_GRID_DAYS,
+      duration,
+      serviceType: state.form.serviceType,
+    });
+    state.ui.gridAvailability = result;
+    state.ui.gridCacheKey     = cacheKey;
+  } catch(err) {
+    console.error('グリッドデータ取得失敗:', err);
+    state.ui.gridAvailability = {};
+  }
+
+  state.ui.gridLoading = false;
+  render();
+}
+
+function changeGrid(delta) {
+  const today   = formatDateStr(new Date());
+  const current = state.ui.gridStartDate || today;
+  const d       = new Date(current + 'T00:00:00+09:00');
+  d.setDate(d.getDate() + delta);
+  const next = formatDateStr(d);
+  state.ui.gridStartDate    = next < today ? today : next;
+  state.ui.gridAvailability = null;
+  state.ui.gridCacheKey     = '';
+  state.form.date           = '';
+  state.form.timeSlot       = '';
+  state.form.endTime        = '';
+  render();
+  loadGridAvailability();
+}
+
+function selectGridSlot(date, time) {
+  state.form.date     = date;
+  state.form.timeSlot = time;
+  const duration      = isVisit() ? getTotalDuration() : state.form.duration;
+  state.form.endTime  = addMinutes(time, duration);
+  renderButtons();
+  // セルのハイライトだけ外科的に更新（全再描画回避）
+  document.querySelectorAll('.cg-cell.cg-open, .cg-cell.cg-sel').forEach(el => {
+    el.className = el.className.replace('cg-sel', 'cg-open');
+  });
+  const selEl = document.getElementById(`cg-${date}_${time}`);
+  if (selEl) selEl.className = selEl.className.replace('cg-open', 'cg-sel');
+  // 選択中バナーを更新
+  const banner = document.getElementById('cg-banner');
+  if (banner) {
+    banner.innerHTML = _buildGridBanner();
+    banner.classList.remove('hidden');
+  }
+}
+
+function _buildGridBanner() {
+  if (!state.form.date || !state.form.timeSlot) return '';
+  const duration = isVisit() ? getTotalDuration() : state.form.duration;
+  const end      = formatTime(addMinutes(state.form.timeSlot, duration));
+  return `<span class="cg-banner-text">
+    ${formatJapanese(state.form.date)}&nbsp; ${state.form.timeSlot}〜${end}
+  </span>`;
+}
+
+function renderDateTimeGrid() {
+  if (state.ui.gridLoading || !state.ui.gridAvailability) {
+    return `
+      <p class="section-title">日時選択</p>
+      <div class="loading-overlay"><div class="spinner"></div><span>空き枠を確認中...</span></div>`;
+  }
+
+  const avail   = state.ui.gridAvailability;
+  const today   = formatDateStr(new Date());
+  const start   = state.ui.gridStartDate || today;
+  const startMs = new Date(start + 'T00:00:00+09:00').getTime();
+  const dates   = [];
+  for (let i = 0; i < CUST_GRID_DAYS; i++) {
+    const d = new Date(startMs + i * 86400000);
+    dates.push(formatDateStr(d));
+  }
+
+  const selectedKey = state.form.date && state.form.timeSlot
+    ? `${state.form.date}_${state.form.timeSlot}` : null;
+
+  // 空き枠が1つ以上ある時間帯のみ行を表示（グリッドをコンパクトに）
+  const visibleTimes = CUST_GRID_TIMES.filter(time =>
+    dates.some(d => Array.isArray(avail[d]) && avail[d].includes(time))
+  );
+
+  // ── ヘッダー行 ──
+  const headerCells = dates.map(date => {
+    const d   = new Date(date + 'T00:00:00+09:00');
+    const dow = d.getDay();
+    const wk  = ['日','月','火','水','木','金','土'][dow];
+    const m   = d.getMonth() + 1;
+    const day = d.getDate();
+    let cls   = 'cg-th';
+    if (date === today)  cls += ' cg-today';
+    else if (dow === 0)  cls += ' cg-sun';
+    else if (dow === 6)  cls += ' cg-sat';
+    return `<th class="${cls}">${m}/${day}<br><span class="cg-dow">${wk}</span></th>`;
+  }).join('');
+
+  // ── ボディ行 ──
+  let bodyRows = '';
+  if (visibleTimes.length === 0) {
+    bodyRows = `<tr><td colspan="${dates.length + 1}" class="cg-empty-row">この期間に空き枠はありません</td></tr>`;
+  } else {
+    bodyRows = visibleTimes.map(time => {
+      const cells = dates.map(date => {
+        const key     = `${date}_${time}`;
+        const isAvail = Array.isArray(avail[date]) && avail[date].includes(time);
+        const isSel   = key === selectedKey;
+        if (isSel) {
+          return `<td class="cg-cell cg-sel" id="cg-${key}" onclick="selectGridSlot('${date}','${time}')">○</td>`;
+        } else if (isAvail) {
+          return `<td class="cg-cell cg-open" id="cg-${key}" onclick="selectGridSlot('${date}','${time}')">○</td>`;
+        } else {
+          return `<td class="cg-cell cg-closed">−</td>`;
+        }
+      }).join('');
+      return `<tr><td class="cg-time-td">${time}</td>${cells}</tr>`;
+    }).join('');
+  }
+
+  // ── ナビゲーション ──
+  const prevDate     = formatDateStr(new Date(startMs - CUST_GRID_DAYS * 86400000));
+  const prevDisabled = prevDate < today;
+  const nav = `
+    <div class="cg-nav">
+      <button class="cg-nav-btn" onclick="changeGrid(-${CUST_GRID_DAYS})"
+              ${prevDisabled ? 'disabled' : ''}>‹ 前の${CUST_GRID_DAYS}日</button>
+      <button class="cg-nav-btn" onclick="changeGrid(${CUST_GRID_DAYS})">
+        次の${CUST_GRID_DAYS}日 ›</button>
+    </div>`;
+
+  // ── 選択バナー ──
+  const hasSel   = !!(state.form.date && state.form.timeSlot);
+  const banner   = `<div class="cg-banner ${hasSel ? '' : 'hidden'}" id="cg-banner">
+    ${hasSel ? _buildGridBanner() : ''}
+  </div>`;
+
+  return `
+    <p class="section-title">日時選択</p>
+    <p class="section-sub">○をタップして日時を選んでください</p>
+    ${nav}
+    ${banner}
+    <div class="cg-scroll">
+      <table class="cg-table">
+        <thead><tr><th class="cg-corner">時間</th>${headerCells}</tr></thead>
+        <tbody>${bodyRows}</tbody>
+      </table>
+    </div>`;
+}
+
+// ============================================================
+// 日付選択（旧・削除不可のため残存）
 // ============================================================
 function renderDatePicker() {
   const { calendarYear: year, calendarMonth: month } = state.ui;
@@ -1064,9 +1244,14 @@ function goNext() {
 
 function goBack() {
   if (state.step <= 1) return;
-  const slotStep     = stepNum('slot');
+  const datetimeStep = stepNum('datetime');
   const customerStep = stepNum('customer');
-  if (state.step === slotStep)     { state.form.timeSlot = ''; state.form.endTime = ''; }
+  // 日時グリッドステップを離れるとき選択をリセット（ただしグリッドデータは保持）
+  if (state.step === datetimeStep) {
+    state.form.date     = '';
+    state.form.timeSlot = '';
+    state.form.endTime  = '';
+  }
   if (state.step === customerStep) { state.form.isEditing = false; }
   state.step--;
   render();

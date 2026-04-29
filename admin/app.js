@@ -28,6 +28,11 @@ const GRID_TIMES = (() => {
 })();
 
 // ============================================================
+// 予約変更フォームの一時状態
+// ============================================================
+let _reschedule = null; // { reservationId, serviceType, duration, selectedStartTime, selectedEndTime }
+
+// ============================================================
 // 状態管理
 // ============================================================
 const state = {
@@ -269,7 +274,10 @@ function openReservationDetail(reservationId) {
         </div>` : ''}
       </div>
       ${!isCancelled ? `
-      <div class="modal-footer">
+      <div class="modal-footer" id="modal-footer">
+        <button class="btn-reschedule-reservation" onclick="showRescheduleForm('${r.reservationId}')">
+          日時を変更する
+        </button>
         <button class="btn-cancel-reservation" id="cancel-reservation-btn"
                 onclick="handleAdminCancel('${r.reservationId}')">
           この予約をキャンセルする
@@ -333,6 +341,178 @@ async function handleAdminCancel(reservationId) {
       btn.style.background = '';
     }
   }
+}
+
+// ============================================================
+// 予約日時変更フォーム
+// ============================================================
+function showRescheduleForm(reservationId) {
+  const r = state.futureReservations.find(x => x.reservationId === reservationId);
+  if (!r) return;
+
+  _reschedule = { reservationId, serviceType: r.serviceType, duration: r.duration,
+                  selectedStartTime: null, selectedEndTime: null };
+
+  const footer = document.getElementById('modal-footer');
+  if (!footer) return;
+
+  footer.innerHTML = `
+    <div class="reschedule-form">
+      <div class="reschedule-date-row">
+        <input type="date" id="reschedule-date-input" class="reschedule-date-input"
+               value="${r.date}" min="${todayStr()}"
+               onchange="onRescheduleDateChange()">
+        <button class="reschedule-check-btn" id="reschedule-check-btn"
+                onclick="loadRescheduleSlots('${reservationId}')">
+          空き枠を確認
+        </button>
+      </div>
+      <div id="reschedule-slots-container" class="reschedule-slots-container"></div>
+      <button class="btn-confirm-reschedule" id="confirm-reschedule-btn"
+              style="display:none"
+              onclick="handleAdminReschedule('${reservationId}')">
+        この日時に変更する
+      </button>
+      <button class="btn-back-reschedule" onclick="cancelRescheduleForm('${reservationId}')">
+        ← 戻る
+      </button>
+    </div>`;
+}
+
+function onRescheduleDateChange() {
+  const container = document.getElementById('reschedule-slots-container');
+  if (container) container.innerHTML = '';
+  const confirmBtn = document.getElementById('confirm-reschedule-btn');
+  if (confirmBtn) confirmBtn.style.display = 'none';
+  if (_reschedule) { _reschedule.selectedStartTime = null; _reschedule.selectedEndTime = null; }
+}
+
+async function loadRescheduleSlots(reservationId) {
+  if (!_reschedule) return;
+  const r = state.futureReservations.find(x => x.reservationId === reservationId);
+  if (!r) return;
+
+  const dateInput = document.getElementById('reschedule-date-input');
+  if (!dateInput || !dateInput.value) return;
+  const newDate = dateInput.value;
+
+  const container = document.getElementById('reschedule-slots-container');
+  const checkBtn  = document.getElementById('reschedule-check-btn');
+  if (container) container.innerHTML = '<div class="reschedule-loading">確認中...</div>';
+  if (checkBtn)  checkBtn.disabled = true;
+  _reschedule.selectedStartTime = null;
+  _reschedule.selectedEndTime   = null;
+  const confirmBtn = document.getElementById('confirm-reschedule-btn');
+  if (confirmBtn) confirmBtn.style.display = 'none';
+
+  try {
+    const result = await apiGet({
+      action:      'getAvailableSlots',
+      date:        newDate,
+      duration:    String(r.duration),
+      serviceType: r.serviceType,
+    });
+
+    if (result.error) throw new Error(result.error);
+
+    const slots = (result.slots || []).filter(s => s.available);
+
+    if (!result.available || slots.length === 0) {
+      container.innerHTML = `<div class="reschedule-no-slots">${result.reason || 'この日に空き枠はありません'}</div>`;
+    } else {
+      container.innerHTML = `
+        <div class="reschedule-slots-label">空き時間を選択（${r.duration}分）</div>
+        <div class="reschedule-slots-grid" id="reschedule-slots-grid">
+          ${slots.map(s => {
+            const endMin = timeToMin(s.time) + r.duration;
+            const end    = minutesToTimeStr(endMin);
+            return `<button class="reschedule-slot-btn"
+                            data-start="${s.time}" data-end="${end}"
+                            onclick="selectRescheduleSlot('${s.time}','${end}')">
+                      ${s.time}
+                    </button>`;
+          }).join('')}
+        </div>`;
+    }
+  } catch(err) {
+    container.innerHTML = `<div class="reschedule-no-slots">読み込みに失敗しました</div>`;
+  }
+
+  if (checkBtn) checkBtn.disabled = false;
+}
+
+function selectRescheduleSlot(startTime, endTime) {
+  if (!_reschedule) return;
+  _reschedule.selectedStartTime = startTime;
+  _reschedule.selectedEndTime   = endTime;
+
+  document.querySelectorAll('.reschedule-slot-btn').forEach(btn => {
+    btn.classList.toggle('selected', btn.dataset.start === startTime);
+  });
+
+  const confirmBtn = document.getElementById('confirm-reschedule-btn');
+  const dateInput  = document.getElementById('reschedule-date-input');
+  if (confirmBtn) {
+    const label = dateInput ? formatDateLabel(dateInput.value) : '';
+    confirmBtn.textContent = `${label} ${startTime}〜${endTime} に変更する（お客様に通知が届きます）`;
+    confirmBtn.style.display = 'block';
+  }
+}
+
+async function handleAdminReschedule(reservationId) {
+  if (!_reschedule || !_reschedule.selectedStartTime) return;
+
+  const dateInput = document.getElementById('reschedule-date-input');
+  if (!dateInput || !dateInput.value) return;
+  const newDate      = dateInput.value;
+  const newStartTime = _reschedule.selectedStartTime;
+  const newEndTime   = _reschedule.selectedEndTime;
+
+  const confirmBtn = document.getElementById('confirm-reschedule-btn');
+  if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = '変更中...'; }
+
+  try {
+    const result = await apiPost({
+      action:       'adminUpdateReservation',
+      reservationId,
+      newDate,
+      newStartTime,
+    });
+    if (result.error) throw new Error(result.error);
+
+    // ローカル状態を更新
+    const r = state.futureReservations.find(x => x.reservationId === reservationId);
+    if (r) {
+      r.date      = newDate;
+      r.startTime = newStartTime;
+      r.endTime   = result.newEndTime || newEndTime;
+    }
+    _reschedule = null;
+
+    closeReservationDetail();
+    showToast('予約の日時を変更しました');
+    renderContent();
+  } catch(err) {
+    showToast('変更に失敗しました: ' + err.message, true);
+    if (confirmBtn) { confirmBtn.disabled = false; }
+  }
+}
+
+function cancelRescheduleForm(reservationId) {
+  const r = state.futureReservations.find(x => x.reservationId === reservationId);
+  if (!r) return;
+  _reschedule = null;
+
+  const footer = document.getElementById('modal-footer');
+  if (!footer) return;
+  footer.innerHTML = `
+    <button class="btn-reschedule-reservation" onclick="showRescheduleForm('${r.reservationId}')">
+      日時を変更する
+    </button>
+    <button class="btn-cancel-reservation" id="cancel-reservation-btn"
+            onclick="handleAdminCancel('${r.reservationId}')">
+      この予約をキャンセルする
+    </button>`;
 }
 
 // ============================================================
