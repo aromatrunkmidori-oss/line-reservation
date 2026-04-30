@@ -758,7 +758,10 @@ function renderDateTimeGrid() {
   if (state.ui.gridLoading || !state.ui.gridAvailability) {
     return `
       <p class="section-title">日時選択</p>
-      <div class="loading-overlay"><div class="spinner"></div><span>空き枠を確認中...</span></div>`;
+      <div class="loading-overlay">
+        <div class="loading-logo">trunk</div>
+        <div class="spinner"></div>
+      </div>`;
   }
 
   const avail   = state.ui.gridAvailability;
@@ -955,14 +958,7 @@ async function loadMonthAvailability() {
   if (state.ui.monthAvailabilityLoading)           return; // 取得中
 
   state.ui.monthAvailabilityLoading = true;
-
-  // ローディング表示（…）
-  document.querySelectorAll('[id^="avail-"]').forEach(el => {
-    if (!el.closest('.cal-day.disabled')) {
-      el.className   = 'cal-avail avail-loading';
-      el.textContent = '…';
-    }
-  });
+  _showCalendarLoader(true);
 
   try {
     const result = await apiGet('getMonthAvailability', {
@@ -979,7 +975,25 @@ async function loadMonthAvailability() {
   }
 
   state.ui.monthAvailabilityLoading = false;
+  _showCalendarLoader(false);
   _updateCalendarIndicators();
+}
+
+// カレンダー上のフルオーバーレイローダーを表示／非表示
+function _showCalendarLoader(show) {
+  const id = 'cal-trunk-loader';
+  if (show) {
+    if (document.getElementById(id)) return;
+    const cal = document.querySelector('.content');
+    if (!cal) return;
+    const el = document.createElement('div');
+    el.id        = id;
+    el.className = 'cal-trunk-loader';
+    el.innerHTML = '<div class="loading-logo">trunk</div><div class="spinner"></div>';
+    cal.appendChild(el);
+  } else {
+    document.getElementById(id)?.remove();
+  }
 }
 
 // インジケータースパンだけDOMを外科的に更新（カレンダー全体は再描画しない）
@@ -1045,8 +1059,8 @@ function renderSlots() {
       <p class="section-title">時間帯選択</p>
       <p class="slot-date-label">${formatJapanese(state.form.date)}</p>
       <div class="loading-overlay">
+        <div class="loading-logo">trunk</div>
         <div class="spinner"></div>
-        <span>空き枠を確認中...</span>
       </div>`;
   }
 
