@@ -574,6 +574,218 @@
       padding: 4px 0;
       text-align: left;
     }
+
+    /* ── 代理予約フォーム ── */
+    .bk-scroll {
+      padding: 12px 16px 32px;
+    }
+    .bk-section {
+      margin-bottom: 22px;
+    }
+    .bk-section-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-secondary);
+      letter-spacing: .5px;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+      padding-bottom: 5px;
+      border-bottom: 1px solid var(--border-light);
+    }
+    .bk-pill-group {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .bk-pill-col {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .bk-pill {
+      padding: 8px 18px;
+      background: var(--bg);
+      border: 1.5px solid var(--border);
+      border-radius: 20px;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-primary);
+      cursor: pointer;
+      transition: background .15s, color .15s, border-color .15s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .bk-pill.active {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: #fff;
+    }
+    .bk-pill-wide {
+      border-radius: var(--radius-sm);
+      text-align: left;
+      padding: 11px 14px;
+    }
+    .bk-field { margin-bottom: 10px; }
+    .bk-label {
+      display: block;
+      font-size: 12px;
+      color: var(--text-secondary);
+      font-weight: 500;
+      margin-bottom: 4px;
+    }
+    .bk-required { color: #EF5350; }
+    .bk-input {
+      width: 100%;
+      padding: 11px 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-size: 15px;
+      color: var(--text-primary);
+      background: var(--bg);
+      box-sizing: border-box;
+    }
+    .bk-input:focus { outline: none; border-color: var(--primary); }
+    .bk-date-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .bk-date-input {
+      flex: 1;
+      padding: 11px 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-size: 15px;
+      color: var(--text-primary);
+      background: var(--bg);
+    }
+    .bk-check-btn {
+      white-space: nowrap;
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius-sm);
+      padding: 11px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .bk-check-btn:disabled { opacity: .45; cursor: default; }
+    .bk-slots-area { margin-top: 10px; min-height: 24px; }
+    .bk-slots-note {
+      font-size: 13px;
+      color: var(--text-secondary);
+      padding: 8px 0;
+    }
+    .bk-slots-label {
+      font-size: 12px;
+      color: var(--text-secondary);
+      margin-bottom: 6px;
+    }
+    .bk-slots-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .bk-slot-btn {
+      padding: 7px 14px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-primary);
+      cursor: pointer;
+      transition: background .15s, color .15s, border-color .15s;
+    }
+    .bk-slot-btn.selected {
+      background: var(--primary);
+      color: #fff;
+      border-color: var(--primary);
+    }
+    .bk-submit-area { margin-top: 24px; padding-bottom: 8px; }
+    .bk-submit-btn {
+      width: 100%;
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius);
+      padding: 16px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: opacity .15s;
+    }
+    .bk-submit-btn:disabled { opacity: .35; cursor: default; }
+    .bk-submit-btn:not(:disabled):active { opacity: .8; }
+
+    /* ── 代理予約 成功画面 ── */
+    .bk-success {
+      padding: 40px 20px 32px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 18px;
+    }
+    .bk-success-icon {
+      width: 64px; height: 64px;
+      background: var(--primary);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 30px;
+      font-weight: 700;
+      color: #fff;
+    }
+    .bk-success-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+    .bk-success-detail {
+      width: 100%;
+      background: var(--bg-card);
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius);
+      padding: 4px 16px;
+    }
+    .bk-success-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border-light);
+      font-size: 14px;
+    }
+    .bk-success-row:last-child { border-bottom: none; }
+    .bk-success-label {
+      flex: 0 0 52px;
+      font-size: 12px;
+      color: var(--text-secondary);
+      padding-top: 2px;
+    }
+    .bk-btn-primary {
+      width: 100%;
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius);
+      padding: 14px;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .bk-btn-secondary {
+      width: 100%;
+      background: none;
+      color: var(--text-secondary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 13px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
