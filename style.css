@@ -912,3 +912,14 @@ input, textarea { font-family: inherit; }
   color: var(--text-secondary);
   font-size: 13px;
 }
+
+.cg-no-avail {
+  margin: 0 0 8px;
+  padding: 10px 14px;
+  background: #FFF3CD;
+  border: 1px solid #FADA7A;
+  border-radius: 8px;
+  color: #7A5C00;
+  font-size: 13px;
+  text-align: center;
+}

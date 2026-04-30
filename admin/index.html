@@ -786,6 +786,183 @@
       font-weight: 600;
       cursor: pointer;
     }
+
+    /* ── ステップバー ── */
+    .bk-step-bar {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0;
+      margin: 0 0 24px;
+    }
+    .bk-step {
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      border: 2px solid var(--border);
+      color: var(--text-secondary);
+      font-size: 13px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg);
+      flex-shrink: 0;
+    }
+    .bk-step.active {
+      border-color: var(--primary);
+      color: var(--primary);
+      background: var(--primary-pale, #e8f5e9);
+    }
+    .bk-step.done {
+      border-color: var(--primary);
+      background: var(--primary);
+      color: #fff;
+    }
+    .bk-step-line {
+      flex: 1;
+      height: 2px;
+      background: var(--border);
+      max-width: 48px;
+    }
+    .bk-step-line.active { background: var(--primary); }
+
+    /* ── グリッドフッター（戻る＋次へ） ── */
+    .bk-grid-footer {
+      display: flex;
+      gap: 8px;
+      align-items: stretch;
+      padding-bottom: 8px;
+    }
+    .bk-grid-footer .bk-btn-secondary { flex: 0 0 auto; width: auto; padding: 14px 18px; }
+    .bk-submit-inline { flex: 1; padding: 14px; font-size: 15px; }
+
+    /* ── グリッドローディング ── */
+    .bk-grid-loading {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 32px 0;
+      justify-content: center;
+      color: var(--text-secondary);
+      font-size: 13px;
+    }
+
+    /* ── 代理予約グリッド（bk-cg-*） ── */
+    .bk-no-avail {
+      margin: 0 0 8px;
+      padding: 10px 14px;
+      background: #FFF3CD;
+      border: 1px solid #FADA7A;
+      border-radius: 8px;
+      color: #7A5C00;
+      font-size: 13px;
+      text-align: center;
+    }
+    .bk-cg-nav {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .bk-cg-nav-btn {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 7px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-primary);
+      cursor: pointer;
+    }
+    .bk-cg-nav-btn:disabled { opacity: .4; cursor: default; }
+    .bk-cg-banner {
+      background: var(--primary-pale, #e8f5e9);
+      border: 1px solid var(--primary);
+      border-radius: 8px;
+      padding: 9px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--primary);
+      text-align: center;
+      margin-bottom: 8px;
+    }
+    .bk-cg-scroll {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      margin-bottom: 16px;
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius-sm);
+    }
+    .bk-cg-table {
+      border-collapse: collapse;
+      min-width: 100%;
+      font-size: 12px;
+    }
+    .bk-cg-corner {
+      position: sticky;
+      left: 0;
+      background: var(--bg-card);
+      z-index: 2;
+      min-width: 44px;
+      padding: 6px 4px;
+      text-align: center;
+      font-size: 10px;
+      color: var(--text-secondary);
+      border-right: 1px solid var(--border-light);
+      border-bottom: 1px solid var(--border-light);
+    }
+    .bk-cg-th {
+      min-width: 34px;
+      padding: 5px 2px;
+      text-align: center;
+      font-size: 11px;
+      font-weight: 600;
+      border-bottom: 1px solid var(--border-light);
+      border-right: 1px solid var(--border-light);
+      background: var(--bg-card);
+      white-space: nowrap;
+    }
+    .bk-cg-th.bk-cg-today { background: var(--primary-pale, #e8f5e9); color: var(--primary); }
+    .bk-cg-th.bk-cg-sun   { color: #C0392B; }
+    .bk-cg-th.bk-cg-sat   { color: #1565C0; }
+    .bk-cg-dow { font-weight: 400; font-size: 10px; }
+    .bk-cg-time {
+      position: sticky;
+      left: 0;
+      background: var(--bg-card);
+      z-index: 1;
+      padding: 5px 4px;
+      text-align: right;
+      font-size: 11px;
+      color: var(--text-secondary);
+      border-right: 1px solid var(--border-light);
+      border-bottom: 1px solid var(--border-light);
+      white-space: nowrap;
+    }
+    .bk-cg-cell {
+      text-align: center;
+      padding: 5px 2px;
+      border-right: 1px solid var(--border-light);
+      border-bottom: 1px solid var(--border-light);
+      font-size: 12px;
+      min-width: 34px;
+    }
+    .bk-cg-cell.bk-cg-open {
+      color: var(--primary);
+      font-weight: 700;
+      cursor: pointer;
+      background: #f0faf0;
+    }
+    .bk-cg-cell.bk-cg-open:active { background: #d0e8d0; }
+    .bk-cg-cell.bk-cg-sel {
+      background: var(--primary);
+      color: #fff;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .bk-cg-cell.bk-cg-closed {
+      color: var(--border);
+      background: var(--bg);
+    }
   </style>
 </head>
 <body>

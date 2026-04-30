@@ -661,10 +661,10 @@ function selectDuration(el, min) {
 // 日時グリッド（顧客向け）
 // ============================================================
 
-// 10:00〜22:00 の30分刻み
+// 10:00〜26:00 の30分刻み（日付跨ぎ予約に対応）
 const CUST_GRID_TIMES = (() => {
   const t = [];
-  for (let m = 10 * 60; m < 22 * 60; m += 30)
+  for (let m = 10 * 60; m < 26 * 60; m += 30)
     t.push(`${String(Math.floor(m/60)).padStart(2,'0')}:${String(m%60).padStart(2,'0')}`);
   return t;
 })();
@@ -774,10 +774,24 @@ function renderDateTimeGrid() {
   const selectedKey = state.form.date && state.form.timeSlot
     ? `${state.form.date}_${state.form.timeSlot}` : null;
 
-  // 空き枠が1つ以上ある時間帯のみ行を表示（グリッドをコンパクトに）
-  const visibleTimes = CUST_GRID_TIMES.filter(time =>
-    dates.some(d => Array.isArray(avail[d]) && avail[d].includes(time))
+  // 空き枠が1つでもあるか（警告バナー表示判定用）
+  const hasAnyAvailable = dates.some(d =>
+    Array.isArray(avail[d]) && avail[d].length > 0
   );
+
+  // 全時間帯を表示する（予約不可枠を含む）
+  // 表示行の範囲は「データ上で何らかの枠がある日の最小〜最大時刻」に絞る
+  // 空き枠が1つもない場合は CUST_GRID_TIMES 全体を使う
+  let visibleTimes;
+  if (hasAnyAvailable) {
+    const allAvailTimes = new Set();
+    dates.forEach(d => { if (Array.isArray(avail[d])) avail[d].forEach(t => allAvailTimes.add(t)); });
+    const minIdx = CUST_GRID_TIMES.findIndex(t => allAvailTimes.has(t));
+    const maxIdx = CUST_GRID_TIMES.reduce((acc, t, i) => allAvailTimes.has(t) ? i : acc, minIdx);
+    visibleTimes = CUST_GRID_TIMES.slice(Math.max(0, minIdx - 1), maxIdx + 2);
+  } else {
+    visibleTimes = CUST_GRID_TIMES;
+  }
 
   // ── ヘッダー行 ──
   const headerCells = dates.map(date => {
@@ -793,27 +807,26 @@ function renderDateTimeGrid() {
     return `<th class="${cls}">${m}/${day}<br><span class="cg-dow">${wk}</span></th>`;
   }).join('');
 
-  // ── ボディ行 ──
-  let bodyRows = '';
-  if (visibleTimes.length === 0) {
-    bodyRows = `<tr><td colspan="${dates.length + 1}" class="cg-empty-row">この期間に空き枠はありません</td></tr>`;
-  } else {
-    bodyRows = visibleTimes.map(time => {
-      const cells = dates.map(date => {
-        const key     = `${date}_${time}`;
-        const isAvail = Array.isArray(avail[date]) && avail[date].includes(time);
-        const isSel   = key === selectedKey;
-        if (isSel) {
-          return `<td class="cg-cell cg-sel" id="cg-${key}" onclick="selectGridSlot('${date}','${time}')">○</td>`;
-        } else if (isAvail) {
-          return `<td class="cg-cell cg-open" id="cg-${key}" onclick="selectGridSlot('${date}','${time}')">○</td>`;
-        } else {
-          return `<td class="cg-cell cg-closed">−</td>`;
-        }
-      }).join('');
-      return `<tr><td class="cg-time-td">${time}</td>${cells}</tr>`;
+  // ── 空き枠なし警告 ──
+  const noAvailNotice = hasAnyAvailable ? '' : `
+    <p class="cg-no-avail">予約可能な時間帯がありません。</p>`;
+
+  // ── ボディ行（常に全行表示）──
+  const bodyRows = visibleTimes.map(time => {
+    const cells = dates.map(date => {
+      const key     = `${date}_${time}`;
+      const isAvail = Array.isArray(avail[date]) && avail[date].includes(time);
+      const isSel   = key === selectedKey;
+      if (isSel) {
+        return `<td class="cg-cell cg-sel" id="cg-${key}" onclick="selectGridSlot('${date}','${time}')">○</td>`;
+      } else if (isAvail) {
+        return `<td class="cg-cell cg-open" id="cg-${key}" onclick="selectGridSlot('${date}','${time}')">○</td>`;
+      } else {
+        return `<td class="cg-cell cg-closed">−</td>`;
+      }
     }).join('');
-  }
+    return `<tr><td class="cg-time-td">${formatTime(time)}</td>${cells}</tr>`;
+  }).join('');
 
   // ── ナビゲーション ──
   const prevDate     = formatDateStr(new Date(startMs - CUST_GRID_DAYS * 86400000));
@@ -836,6 +849,7 @@ function renderDateTimeGrid() {
     <p class="section-title">日時選択</p>
     <p class="section-sub">○をタップして日時を選んでください</p>
     ${nav}
+    ${noAvailNotice}
     ${banner}
     <div class="cg-scroll">
       <table class="cg-table">

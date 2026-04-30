@@ -33,25 +33,52 @@ const GRID_TIMES = (() => {
 let _reschedule = null; // { reservationId, serviceType, duration, selectedStartTime, selectedEndTime }
 
 // ============================================================
-// 代理予約フォームの状態
+// 代理予約 — マスタデータ
 // ============================================================
-let _bkMenus = [];
+const VISIT_COURSES = [
+  { name: '矯正＋オイル', duration: 100 },
+  { name: '矯正＋オイル', duration: 130 },
+];
+const VISIT_OPTIONS = [
+  { name: 'オプションなし', duration: 0  },
+  { name: 'ヘッド',         duration: 30 },
+  { name: 'フット',         duration: 30 },
+  { name: '腸モミ',         duration: 30 },
+];
+const MOBILE_DURATIONS = [60, 90, 120, 150, 180];
+const BK_GRID_DAYS = 14;
 
+// 出張コース名リスト（設定取得後に上書き）
+let _bkMobileCourses = ['もみほぐし', 'オイルトリートメント', 'もみほぐし＋オイルトリートメント'];
+
+// ============================================================
+// 代理予約フォームの状態
+// step: 'info' | 'grid' | 'confirm' | 'success'
+// ============================================================
 function _defaultBkForm() {
   return {
-    serviceType:       null,
-    customerName:      '',
-    phone:             '',
-    address:           '',
-    menuName:          null,
-    duration:          null,
-    date:              '',
-    slots:             [],
-    slotsLoading:      false,
+    step:         'info',
+    serviceType:  null,        // '来店' | '出張'
+    // 顧客情報
+    customerName: '',
+    phone:        '',
+    address:      '',
+    // 来店
+    courseIdx:    null,        // index into VISIT_COURSES
+    options:      [],          // 選択中オプション名の配列
+    // 出張
+    mobileCourse: null,        // string
+    duration:     null,        // number（分）
+    // グリッド（page2）
+    gridStartDate:     '',
+    gridAvailability:  null,   // { date: [times] | null }
+    gridLoading:       false,
+    gridCacheKey:      '',
+    selectedDate:      '',
     selectedStartTime: null,
-    selectedEndTime:   null,
-    submitting:        false,
-    successInfo:       null,
+    // submit
+    submitting:   false,
+    successInfo:  null,
   };
 }
 let _bkForm = _defaultBkForm();
@@ -226,7 +253,7 @@ function switchTab(tab) {
   if (tab === 'grid' && !state.gridData) loadGridData();
   else if (tab === 'grid') renderContent();
   else if (tab === 'reservations') loadFutureReservations();
-  else if (tab === 'booking' && _bkMenus.length === 0) loadBookingMenus();
+  else if (tab === 'booking') loadBookingMenus();
 }
 
 // ============================================================
@@ -909,14 +936,66 @@ async function loadFutureReservations() {
 // ============================================================
 
 // メニュー一覧をAPIから取得
+// 設定からコース名リストを取得（初回のみ）
+let _bkMenusLoaded = false;
 async function loadBookingMenus() {
+  if (_bkMenusLoaded) return;
+  _bkMenusLoaded = true;
   try {
     const result = await apiGet({ action: 'getSettings' });
-    _bkMenus = result.menus || [];
-  } catch(e) {
-    _bkMenus = [];
+    if (Array.isArray(result.menus) && result.menus.length > 0) {
+      _bkMobileCourses = result.menus.map(m => (typeof m === 'string' ? m : m.name));
+      renderContent();
+    }
+  } catch(e) { /* デフォルト値を使う */ }
+}
+
+// ============================================================
+// 代理予約 — 算出ヘルパー
+// ============================================================
+function _bkEsc(str) {
+  return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// 最終的なメニュー名を返す
+function _bkMenuName() {
+  const f = _bkForm;
+  if (f.serviceType === '来店') {
+    if (f.courseIdx === null) return null;
+    const course = VISIT_COURSES[f.courseIdx];
+    const opts = f.options.filter(o => o !== 'オプションなし');
+    return opts.length > 0 ? `${course.name}（${opts.join('・')}）` : course.name;
   }
-  renderContent();
+  return f.mobileCourse || null;
+}
+
+// 合計施術時間（分）を返す
+function _bkTotalDuration() {
+  const f = _bkForm;
+  if (f.serviceType === '来店') {
+    if (f.courseIdx === null) return null;
+    let dur = VISIT_COURSES[f.courseIdx].duration;
+    if (!f.options.includes('オプションなし')) {
+      f.options.forEach(name => {
+        const opt = VISIT_OPTIONS.find(o => o.name === name);
+        if (opt) dur += opt.duration;
+      });
+    }
+    return dur;
+  }
+  return f.duration || null;
+}
+
+// Page1 の必須項目がすべて揃っているか
+function _bkPage1Valid() {
+  const f = _bkForm;
+  if (!f.customerName.trim() || !f.serviceType) return false;
+  if (f.serviceType === '来店') {
+    return f.courseIdx !== null;
+  } else {
+    return !!f.mobileCourse && !!f.duration && !!f.address.trim();
+  }
 }
 
 // テキスト入力の現在値を _bkForm に同期（再レンダー前に呼ぶ）
@@ -924,49 +1003,311 @@ function _bkSyncInputs() {
   const nameEl    = document.getElementById('bk-name');
   const phoneEl   = document.getElementById('bk-phone');
   const addressEl = document.getElementById('bk-address');
-  const dateEl    = document.getElementById('bk-date');
   if (nameEl)    _bkForm.customerName = nameEl.value;
   if (phoneEl)   _bkForm.phone        = phoneEl.value;
   if (addressEl) _bkForm.address      = addressEl.value;
-  if (dateEl)    _bkForm.date         = dateEl.value;
 }
 
-function _bkEsc(str) {
-  return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+// ============================================================
+// 代理予約 — Page 1: 顧客情報・コース
+// ============================================================
+function _renderBkInfo() {
+  const f      = _bkForm;
+  const isVisit = f.serviceType === '来店';
+  const isMobile = f.serviceType === '出張';
+
+  // 来店：コース選択
+  const courseSection = `
+    <div class="bk-section">
+      <div class="bk-section-title">コース</div>
+      <div class="bk-pill-col">
+        ${VISIT_COURSES.map((c, i) => `
+          <button class="bk-pill bk-pill-wide ${f.courseIdx === i ? 'active' : ''}"
+                  onclick="bkSetCourse(${i})">
+            ${_bkEsc(c.name)}（${c.duration}分）
+          </button>`).join('')}
+      </div>
+    </div>`;
+
+  // 来店：オプション選択
+  const optionSection = f.courseIdx !== null ? `
+    <div class="bk-section">
+      <div class="bk-section-title">オプション</div>
+      <div class="bk-pill-col">
+        ${VISIT_OPTIONS.map(o => `
+          <button class="bk-pill bk-pill-wide ${f.options.includes(o.name) ? 'active' : ''}"
+                  data-opt="${_bkEsc(o.name)}"
+                  onclick="bkToggleOption(this.dataset.opt)">
+            ${_bkEsc(o.name)}${o.duration > 0 ? `（+${o.duration}分）` : ''}
+          </button>`).join('')}
+      </div>
+    </div>` : '';
+
+  // 出張：コース選択
+  const mobileCourseSection = `
+    <div class="bk-section">
+      <div class="bk-section-title">コース</div>
+      <div class="bk-pill-col">
+        ${_bkMobileCourses.map(name => `
+          <button class="bk-pill bk-pill-wide ${f.mobileCourse === name ? 'active' : ''}"
+                  data-name="${_bkEsc(name)}"
+                  onclick="bkSetMobileCourse(this.dataset.name)">
+            ${_bkEsc(name)}
+          </button>`).join('')}
+      </div>
+    </div>`;
+
+  // 出張：時間選択
+  const durationSection = `
+    <div class="bk-section">
+      <div class="bk-section-title">施術時間</div>
+      <div class="bk-pill-group">
+        ${MOBILE_DURATIONS.map(d =>
+          `<button class="bk-pill ${f.duration === d ? 'active' : ''}"
+                   onclick="bkSetDuration(${d})">${d}分</button>`
+        ).join('')}
+      </div>
+    </div>`;
+
+  const p1Valid = _bkPage1Valid();
+
+  return `
+    <div class="bk-scroll">
+      <div class="bk-step-bar">
+        <span class="bk-step active">1</span>
+        <span class="bk-step-line"></span>
+        <span class="bk-step">2</span>
+        <span class="bk-step-line"></span>
+        <span class="bk-step">3</span>
+      </div>
+
+      <!-- 顧客情報 -->
+      <div class="bk-section">
+        <div class="bk-section-title">顧客情報</div>
+        <div class="bk-field">
+          <label class="bk-label">氏名 <span class="bk-required">*</span></label>
+          <input type="text" class="bk-input" id="bk-name"
+                 value="${_bkEsc(f.customerName)}"
+                 placeholder="山田 太郎">
+        </div>
+        <div class="bk-field">
+          <label class="bk-label">電話番号</label>
+          <input type="tel" class="bk-input" id="bk-phone"
+                 value="${_bkEsc(f.phone)}"
+                 placeholder="090-0000-0000">
+        </div>
+      </div>
+
+      <!-- 種別 -->
+      <div class="bk-section">
+        <div class="bk-section-title">種別</div>
+        <div class="bk-pill-group">
+          <button class="bk-pill ${isVisit ? 'active' : ''}"
+                  onclick="bkSetServiceType('来店')">来店</button>
+          <button class="bk-pill ${isMobile ? 'active' : ''}"
+                  onclick="bkSetServiceType('出張')">出張</button>
+        </div>
+      </div>
+
+      ${isVisit  ? courseSection + optionSection : ''}
+      ${isMobile ? mobileCourseSection + durationSection + `
+        <div class="bk-section">
+          <div class="bk-section-title">出張先住所 <span class="bk-required">*</span></div>
+          <input type="text" class="bk-input" id="bk-address"
+                 value="${_bkEsc(f.address)}"
+                 placeholder="東京都渋谷区...">
+        </div>` : ''}
+
+      <div class="bk-submit-area">
+        <button class="bk-submit-btn" ${p1Valid ? '' : 'disabled'}
+                onclick="bkGoToGrid()">
+          日時を選ぶ →
+        </button>
+      </div>
+    </div>`;
 }
 
-// 空きスロットHTML（初期描画・再描画兼用）
-function _bkSlotsHtml() {
-  if (_bkForm.slotsLoading) {
-    return '<div class="bk-slots-note">確認中...</div>';
+// ============================================================
+// 代理予約 — Page 2: 予約枠グリッド
+// ============================================================
+function _renderBkGrid() {
+  const f     = _bkForm;
+  const today = todayStr();
+  const start = f.gridStartDate || today;
+  const startMs = new Date(start + 'T00:00:00+09:00').getTime();
+  const dates = [];
+  for (let i = 0; i < BK_GRID_DAYS; i++) {
+    dates.push(dateToStr(new Date(startMs + i * 86400000)));
   }
-  if (_bkForm.slots.length === 0) return '';
 
-  const available = _bkForm.slots.filter(s => s.available);
-  if (available.length === 0) {
-    return '<div class="bk-slots-note">この日に空き枠はありません</div>';
+  let gridHtml;
+  if (f.gridLoading || !f.gridAvailability) {
+    gridHtml = `<div class="bk-grid-loading"><div class="spinner"></div><span>空き枠を確認中...</span></div>`;
+  } else {
+    const avail = f.gridAvailability;
+    const selectedKey = f.selectedDate && f.selectedStartTime
+      ? `${f.selectedDate}_${f.selectedStartTime}` : null;
+
+    const hasAnyAvail = dates.some(d => Array.isArray(avail[d]) && avail[d].length > 0);
+
+    // 表示する時間帯の範囲（空き枠がある時間の前後1行 or 全体）
+    let visibleTimes;
+    if (hasAnyAvail) {
+      const allAvailSet = new Set();
+      dates.forEach(d => { if (Array.isArray(avail[d])) avail[d].forEach(t => allAvailSet.add(t)); });
+      const minIdx = GRID_TIMES.findIndex(t => allAvailSet.has(t));
+      const maxIdx = GRID_TIMES.reduce((acc, t, i) => allAvailSet.has(t) ? i : acc, minIdx);
+      visibleTimes = GRID_TIMES.slice(Math.max(0, minIdx - 1), maxIdx + 2);
+    } else {
+      visibleTimes = GRID_TIMES;
+    }
+
+    const noAvailNotice = hasAnyAvail ? '' :
+      `<p class="bk-no-avail">予約可能な時間帯がありません。</p>`;
+
+    const headerCells = dates.map(date => {
+      const d   = new Date(date + 'T00:00:00+09:00');
+      const dow = d.getDay();
+      const wk  = ['日','月','火','水','木','金','土'][dow];
+      const m   = d.getMonth() + 1;
+      const day = d.getDate();
+      let cls = 'bk-cg-th';
+      if (date === today)  cls += ' bk-cg-today';
+      else if (dow === 0)  cls += ' bk-cg-sun';
+      else if (dow === 6)  cls += ' bk-cg-sat';
+      return `<th class="${cls}">${m}/${day}<br><span class="bk-cg-dow">${wk}</span></th>`;
+    }).join('');
+
+    const bodyRows = visibleTimes.map(time => {
+      const cells = dates.map(date => {
+        const key     = `${date}_${time}`;
+        const isAvail = Array.isArray(avail[date]) && avail[date].includes(time);
+        const isSel   = key === selectedKey;
+        if (isSel) {
+          return `<td class="bk-cg-cell bk-cg-sel" id="bkcg-${key}"
+                      onclick="bkSelectGridSlot('${date}','${time}')">○</td>`;
+        } else if (isAvail) {
+          return `<td class="bk-cg-cell bk-cg-open" id="bkcg-${key}"
+                      onclick="bkSelectGridSlot('${date}','${time}')">○</td>`;
+        } else {
+          return `<td class="bk-cg-cell bk-cg-closed">−</td>`;
+        }
+      }).join('');
+      const dur = _bkTotalDuration();
+      const endMin = timeToMin(time) + (dur || 0);
+      const endStr = minutesToTimeStr(endMin);
+      return `<tr><td class="bk-cg-time">${time}</td>${cells}</tr>`;
+    }).join('');
+
+    const prevDate     = dateToStr(new Date(startMs - BK_GRID_DAYS * 86400000));
+    const prevDisabled = prevDate < today;
+    const nav = `
+      <div class="bk-cg-nav">
+        <button class="bk-cg-nav-btn" onclick="bkChangeGrid(-${BK_GRID_DAYS})"
+                ${prevDisabled ? 'disabled' : ''}>‹ 前の${BK_GRID_DAYS}日</button>
+        <button class="bk-cg-nav-btn" onclick="bkChangeGrid(${BK_GRID_DAYS})">
+          次の${BK_GRID_DAYS}日 ›</button>
+      </div>`;
+
+    const selBanner = (f.selectedDate && f.selectedStartTime) ? `
+      <div class="bk-cg-banner">
+        ${formatDateLabel(f.selectedDate)}&nbsp; ${f.selectedStartTime}〜${minutesToTimeStr(timeToMin(f.selectedStartTime) + (_bkTotalDuration() || 0))}
+      </div>` : '';
+
+    gridHtml = `
+      ${nav}
+      ${noAvailNotice}
+      ${selBanner}
+      <div class="bk-cg-scroll">
+        <table class="bk-cg-table">
+          <thead><tr><th class="bk-cg-corner">時間</th>${headerCells}</tr></thead>
+          <tbody>${bodyRows}</tbody>
+        </table>
+      </div>`;
   }
 
-  const btns = available.map(s => {
-    const endMin = timeToMin(s.time) + (_bkForm.duration || 0);
-    const end    = minutesToTimeStr(endMin);
-    const sel    = _bkForm.selectedStartTime === s.time ? 'selected' : '';
-    return `<button class="bk-slot-btn ${sel}"
-                    data-start="${s.time}" data-end="${end}"
-                    onclick="bkSelectSlot(this.dataset.start,this.dataset.end)">
-              ${s.time}
-            </button>`;
-  }).join('');
+  return `
+    <div class="bk-scroll">
+      <div class="bk-step-bar">
+        <span class="bk-step done">1</span>
+        <span class="bk-step-line active"></span>
+        <span class="bk-step active">2</span>
+        <span class="bk-step-line"></span>
+        <span class="bk-step">3</span>
+      </div>
 
-  return `<div class="bk-slots-label">${_bkForm.date} の空き（${_bkForm.duration}分）</div>
-          <div class="bk-slots-grid">${btns}</div>`;
+      ${gridHtml}
+
+      <div class="bk-grid-footer">
+        <button class="bk-btn-secondary" onclick="bkGoBack()">← 戻る</button>
+        <button class="bk-submit-btn bk-submit-inline"
+                ${f.selectedDate && f.selectedStartTime ? '' : 'disabled'}
+                onclick="bkGoToConfirm()">確認へ →</button>
+      </div>
+    </div>`;
 }
 
+// ============================================================
+// 代理予約 — Page 3: 確認
+// ============================================================
+function _renderBkConfirm() {
+  const f        = _bkForm;
+  const menuName = _bkMenuName();
+  const dur      = _bkTotalDuration();
+  const endTime  = minutesToTimeStr(timeToMin(f.selectedStartTime) + dur);
+  const badgeCls = f.serviceType === '来店' ? 'badge-visit' : 'badge-mobile';
+
+  return `
+    <div class="bk-scroll">
+      <div class="bk-step-bar">
+        <span class="bk-step done">1</span>
+        <span class="bk-step-line active"></span>
+        <span class="bk-step done">2</span>
+        <span class="bk-step-line active"></span>
+        <span class="bk-step active">3</span>
+      </div>
+
+      <div class="bk-section-title" style="margin:0 0 12px">予約内容の確認</div>
+      <div class="bk-success-detail">
+        <div class="bk-success-row">
+          <span class="bk-success-label">お客様</span>
+          <span>${_bkEsc(f.customerName)}${f.phone ? '　' + _bkEsc(f.phone) : ''}</span>
+        </div>
+        <div class="bk-success-row">
+          <span class="bk-success-label">種別</span>
+          <span><span class="service-badge ${badgeCls}">${f.serviceType}</span></span>
+        </div>
+        <div class="bk-success-row">
+          <span class="bk-success-label">コース</span>
+          <span>${_bkEsc(menuName)}（${dur}分）</span>
+        </div>
+        <div class="bk-success-row">
+          <span class="bk-success-label">日時</span>
+          <span>${formatDateLabel(f.selectedDate)}<br>${f.selectedStartTime} 〜 ${endTime}</span>
+        </div>
+        ${f.address ? `<div class="bk-success-row">
+          <span class="bk-success-label">住所</span>
+          <span>${_bkEsc(f.address)}</span>
+        </div>` : ''}
+      </div>
+
+      <div class="bk-grid-footer" style="margin-top:24px">
+        <button class="bk-btn-secondary" onclick="bkGoBack()">← 戻る</button>
+        <button class="bk-submit-btn bk-submit-inline" id="bk-submit-btn"
+                ${f.submitting ? 'disabled' : ''}
+                onclick="bkSubmit()">
+          ${f.submitting ? '処理中...' : '予約を確定する'}
+        </button>
+      </div>
+    </div>`;
+}
+
+// ============================================================
+// 代理予約 — renderBookingTab（ディスパッチ）
+// ============================================================
 function renderBookingTab() {
-  // 成功画面
   if (_bkForm.successInfo) {
-    const info = _bkForm.successInfo;
+    const info     = _bkForm.successInfo;
     const badgeCls = info.serviceType === '来店' ? 'badge-visit' : 'badge-mobile';
     return `
       <div class="bk-success">
@@ -999,213 +1340,181 @@ function renderBookingTab() {
       </div>`;
   }
 
-  const canCheck = !!_bkForm.serviceType && !!_bkForm.duration && !!_bkForm.date;
-  const valid    = !!_bkForm.serviceType &&
-                   !!_bkForm.customerName.trim() &&
-                   !!_bkForm.menuName &&
-                   !!_bkForm.duration &&
-                   !!_bkForm.selectedStartTime;
-
-  const menuBtns = _bkMenus.length > 0
-    ? `<div class="bk-pill-col">
-        ${_bkMenus.map(m => `
-          <button class="bk-pill bk-pill-wide ${_bkForm.menuName === m.name ? 'active' : ''}"
-                  data-name="${_bkEsc(m.name)}"
-                  onclick="bkSetMenu(this.dataset.name)">
-            ${_bkEsc(m.name)}
-          </button>`).join('')}
-       </div>`
-    : '<div class="bk-slots-note">メニューを読み込み中...</div>';
-
-  const durBtns = [30, 60, 90, 120, 150, 180].map(d =>
-    `<button class="bk-pill ${_bkForm.duration === d ? 'active' : ''}"
-             onclick="bkSetDuration(${d})">${d}分</button>`
-  ).join('');
-
-  return `
-    <div class="bk-scroll">
-      <!-- 種別 -->
-      <div class="bk-section">
-        <div class="bk-section-title">種別</div>
-        <div class="bk-pill-group">
-          <button class="bk-pill ${_bkForm.serviceType === '来店' ? 'active' : ''}"
-                  onclick="bkSetServiceType('来店')">来店</button>
-          <button class="bk-pill ${_bkForm.serviceType === '出張' ? 'active' : ''}"
-                  onclick="bkSetServiceType('出張')">出張</button>
-        </div>
-      </div>
-
-      <!-- お客様情報 -->
-      <div class="bk-section">
-        <div class="bk-section-title">お客様情報</div>
-        <div class="bk-field">
-          <label class="bk-label">氏名 <span class="bk-required">*</span></label>
-          <input type="text" class="bk-input" id="bk-name"
-                 value="${_bkEsc(_bkForm.customerName)}"
-                 placeholder="山田 太郎"
-                 oninput="_bkForm.customerName=this.value;bkUpdateSubmitBtn()">
-        </div>
-        <div class="bk-field">
-          <label class="bk-label">電話番号</label>
-          <input type="tel" class="bk-input" id="bk-phone"
-                 value="${_bkEsc(_bkForm.phone)}"
-                 placeholder="090-0000-0000"
-                 oninput="_bkForm.phone=this.value">
-        </div>
-        ${_bkForm.serviceType === '出張' ? `
-        <div class="bk-field">
-          <label class="bk-label">出張先住所 <span class="bk-required">*</span></label>
-          <input type="text" class="bk-input" id="bk-address"
-                 value="${_bkEsc(_bkForm.address)}"
-                 placeholder="東京都渋谷区..."
-                 oninput="_bkForm.address=this.value">
-        </div>` : ''}
-      </div>
-
-      <!-- コース -->
-      <div class="bk-section">
-        <div class="bk-section-title">コース</div>
-        ${menuBtns}
-      </div>
-
-      <!-- 施術時間 -->
-      <div class="bk-section">
-        <div class="bk-section-title">施術時間</div>
-        <div class="bk-pill-group">${durBtns}</div>
-      </div>
-
-      <!-- 日時 -->
-      <div class="bk-section">
-        <div class="bk-section-title">日時</div>
-        <div class="bk-date-row">
-          <input type="date" class="bk-date-input" id="bk-date"
-                 value="${_bkForm.date}" min="${todayStr()}"
-                 oninput="bkOnDateChange()">
-          <button class="bk-check-btn" id="bk-slot-check-btn"
-                  onclick="bkLoadSlots()"
-                  ${canCheck ? '' : 'disabled'}>空き確認</button>
-        </div>
-        <div id="bk-slots" class="bk-slots-area">${_bkSlotsHtml()}</div>
-      </div>
-
-      <!-- 確定ボタン -->
-      <div class="bk-submit-area">
-        <button class="bk-submit-btn" id="bk-submit-btn"
-                onclick="bkSubmit()"
-                ${valid ? '' : 'disabled'}>
-          ${_bkForm.submitting ? '予約処理中...' : '予約を確定する'}
-        </button>
-      </div>
-    </div>`;
+  switch (_bkForm.step) {
+    case 'info':    return _renderBkInfo();
+    case 'grid':    return _renderBkGrid();
+    case 'confirm': return _renderBkConfirm();
+    default:        return _renderBkInfo();
+  }
 }
 
-// 種別変更
+// ============================================================
+// 代理予約 — ページ遷移
+// ============================================================
+function bkGoToGrid() {
+  _bkSyncInputs();
+  if (!_bkPage1Valid()) return;
+  _bkForm.step             = 'grid';
+  _bkForm.selectedDate     = '';
+  _bkForm.selectedStartTime = null;
+  if (!_bkForm.gridStartDate) _bkForm.gridStartDate = todayStr();
+  renderContent();
+  _loadBkGrid();
+}
+
+function bkGoToConfirm() {
+  if (!_bkForm.selectedDate || !_bkForm.selectedStartTime) return;
+  _bkForm.step = 'confirm';
+  renderContent();
+}
+
+function bkGoBack() {
+  if (_bkForm.step === 'grid')    _bkForm.step = 'info';
+  else if (_bkForm.step === 'confirm') _bkForm.step = 'grid';
+  renderContent();
+}
+
+// ============================================================
+// 代理予約 — Page1 ピル操作
+// ============================================================
 function bkSetServiceType(type) {
   _bkSyncInputs();
-  _bkForm.serviceType       = type;
-  _bkForm.slots             = [];
-  _bkForm.selectedStartTime = null;
+  _bkForm.serviceType   = type;
+  _bkForm.courseIdx     = null;
+  _bkForm.options       = [];
+  _bkForm.mobileCourse  = null;
+  _bkForm.duration      = null;
   renderContent();
 }
 
-// メニュー選択
-function bkSetMenu(name) {
+function bkSetCourse(idx) {
   _bkSyncInputs();
-  _bkForm.menuName = name;
+  _bkForm.courseIdx = idx;
+  _bkForm.options   = [];          // コース変更でオプションリセット
   renderContent();
 }
 
-// 施術時間選択
+function bkToggleOption(name) {
+  _bkSyncInputs();
+  const f = _bkForm;
+  if (name === 'オプションなし') {
+    f.options = f.options.includes('オプションなし') ? [] : ['オプションなし'];
+  } else {
+    f.options = f.options.filter(o => o !== 'オプションなし');
+    if (f.options.includes(name)) {
+      f.options = f.options.filter(o => o !== name);
+    } else {
+      f.options = [...f.options, name];
+    }
+  }
+  renderContent();
+}
+
+function bkSetMobileCourse(name) {
+  _bkSyncInputs();
+  _bkForm.mobileCourse = name;
+  renderContent();
+}
+
 function bkSetDuration(mins) {
   _bkSyncInputs();
-  _bkForm.duration          = mins;
-  _bkForm.slots             = [];
-  _bkForm.selectedStartTime = null;
+  _bkForm.duration = mins;
   renderContent();
 }
 
-// 日付変更（再レンダーせずDOMだけ更新）
-function bkOnDateChange() {
-  const dateEl = document.getElementById('bk-date');
-  if (dateEl) _bkForm.date = dateEl.value;
-  _bkForm.slots             = [];
-  _bkForm.selectedStartTime = null;
-  const checkBtn = document.getElementById('bk-slot-check-btn');
-  if (checkBtn) checkBtn.disabled = !(_bkForm.serviceType && _bkForm.duration && _bkForm.date);
-  const slotsEl = document.getElementById('bk-slots');
-  if (slotsEl) slotsEl.innerHTML = '';
-  bkUpdateSubmitBtn();
-}
+// ============================================================
+// 代理予約 — Page2 グリッド操作
+// ============================================================
+async function _loadBkGrid() {
+  const dur = _bkTotalDuration();
+  if (!dur || !_bkForm.serviceType) return;
 
-// 空き枠を取得してスロットエリアを更新
-async function bkLoadSlots() {
-  if (!_bkForm.serviceType || !_bkForm.duration) return;
-  const dateEl = document.getElementById('bk-date');
-  if (dateEl) _bkForm.date = dateEl.value;
-  if (!_bkForm.date) return;
+  const cacheKey = `${_bkForm.serviceType}-${dur}-${_bkForm.gridStartDate}`;
+  if (_bkForm.gridCacheKey === cacheKey && _bkForm.gridAvailability) return;
+  if (_bkForm.gridLoading) return;
 
-  _bkForm.slotsLoading      = true;
-  _bkForm.slots             = [];
-  _bkForm.selectedStartTime = null;
-
-  const slotsEl  = document.getElementById('bk-slots');
-  const checkBtn = document.getElementById('bk-slot-check-btn');
-  if (slotsEl)  slotsEl.innerHTML = '<div class="bk-slots-note">確認中...</div>';
-  if (checkBtn) checkBtn.disabled = true;
-  bkUpdateSubmitBtn();
+  _bkForm.gridLoading = true;
+  renderContent();
 
   try {
     const result = await apiGet({
-      action:      'getAvailableSlots',
-      date:        _bkForm.date,
-      duration:    String(_bkForm.duration),
+      action:      'getAvailableGrid',
+      startDate:   _bkForm.gridStartDate,
+      days:        BK_GRID_DAYS,
+      duration:    dur,
       serviceType: _bkForm.serviceType,
     });
-    if (result.error) throw new Error(result.error);
-    _bkForm.slots = result.slots || [];
-    if (slotsEl) slotsEl.innerHTML = _bkSlotsHtml();
-  } catch(err) {
-    _bkForm.slots = [];
-    if (slotsEl) slotsEl.innerHTML = '<div class="bk-slots-note">読み込みに失敗しました</div>';
+    _bkForm.gridAvailability = result;
+    _bkForm.gridCacheKey     = cacheKey;
+  } catch(e) {
+    _bkForm.gridAvailability = {};
   }
 
-  _bkForm.slotsLoading = false;
-  if (checkBtn) checkBtn.disabled = false;
-  bkUpdateSubmitBtn();
+  _bkForm.gridLoading = false;
+  renderContent();
 }
 
-// スロット選択
-function bkSelectSlot(startTime, endTime) {
-  _bkForm.selectedStartTime = startTime;
-  _bkForm.selectedEndTime   = endTime;
+function bkChangeGrid(delta) {
+  const today = todayStr();
+  const cur   = _bkForm.gridStartDate || today;
+  const d     = new Date(cur + 'T00:00:00+09:00');
+  d.setDate(d.getDate() + delta);
+  const next = dateToStr(d);
+  _bkForm.gridStartDate    = next < today ? today : next;
+  _bkForm.gridAvailability = null;
+  _bkForm.gridCacheKey     = '';
+  _bkForm.selectedDate     = '';
+  _bkForm.selectedStartTime = null;
+  renderContent();
+  _loadBkGrid();
+}
 
-  document.querySelectorAll('.bk-slot-btn').forEach(btn => {
-    btn.classList.toggle('selected', btn.dataset.start === startTime);
+function bkSelectGridSlot(date, time) {
+  _bkForm.selectedDate      = date;
+  _bkForm.selectedStartTime = time;
+
+  // セルのハイライトだけ外科的に更新
+  document.querySelectorAll('.bk-cg-cell.bk-cg-open, .bk-cg-cell.bk-cg-sel').forEach(el => {
+    el.className = el.className.replace('bk-cg-sel', 'bk-cg-open');
   });
-  bkUpdateSubmitBtn();
+  const key = `bkcg-${date}_${time}`;
+  const el  = document.getElementById(key);
+  if (el) el.className = el.className.replace('bk-cg-open', 'bk-cg-sel');
+
+  // 選択バナーを更新
+  const bannerEl = document.querySelector('.bk-cg-banner');
+  const dur = _bkTotalDuration();
+  const bannerHtml = `${formatDateLabel(date)}&nbsp; ${time}〜${minutesToTimeStr(timeToMin(time) + (dur || 0))}`;
+  if (bannerEl) {
+    bannerEl.innerHTML = bannerHtml;
+  } else {
+    // バナー挿入（navの後）
+    const nav = document.querySelector('.bk-cg-nav');
+    if (nav) {
+      const b = document.createElement('div');
+      b.className = 'bk-cg-banner';
+      b.innerHTML = bannerHtml;
+      nav.insertAdjacentElement('afterend', b);
+    }
+  }
+
+  // 確認へボタンを有効化
+  const nextBtn = document.querySelector('.bk-submit-inline');
+  if (nextBtn) nextBtn.disabled = false;
 }
 
-// 確定ボタンの有効/無効を更新
-function bkUpdateSubmitBtn() {
-  const btn = document.getElementById('bk-submit-btn');
-  if (!btn) return;
-  const nameEl = document.getElementById('bk-name');
-  const name   = nameEl ? nameEl.value.trim() : _bkForm.customerName.trim();
-  btn.disabled = !(
-    _bkForm.serviceType && name && _bkForm.menuName &&
-    _bkForm.duration    && _bkForm.selectedStartTime
-  );
-}
-
-// 予約を確定する
+// ============================================================
+// 代理予約 — 予約確定
+// ============================================================
 async function bkSubmit() {
   if (_bkForm.submitting) return;
-
-  // テキスト入力を同期
   _bkSyncInputs();
 
+  const menuName = _bkMenuName();
+  const dur      = _bkTotalDuration();
+
   if (!_bkForm.serviceType || !_bkForm.customerName.trim() ||
-      !_bkForm.menuName || !_bkForm.duration || !_bkForm.selectedStartTime) {
+      !menuName || !dur || !_bkForm.selectedStartTime) {
     showToast('必須項目を入力してください', true);
     return;
   }
@@ -1215,8 +1524,7 @@ async function bkSubmit() {
   }
 
   _bkForm.submitting = true;
-  const btn = document.getElementById('bk-submit-btn');
-  if (btn) { btn.disabled = true; btn.textContent = '予約処理中...'; }
+  renderContent();
 
   try {
     const result = await apiPost({
@@ -1225,35 +1533,35 @@ async function bkSubmit() {
       phone:        _bkForm.phone,
       address:      _bkForm.address,
       serviceType:  _bkForm.serviceType,
-      menuName:     _bkForm.menuName,
-      duration:     _bkForm.duration,
-      date:         _bkForm.date,
+      menuName,
+      duration:     dur,
+      date:         _bkForm.selectedDate,
       startTime:    _bkForm.selectedStartTime,
     });
     if (result.error) throw new Error(result.error);
 
+    const endTime = minutesToTimeStr(timeToMin(_bkForm.selectedStartTime) + dur);
     _bkForm.successInfo = {
       reservationId: result.reservationId,
-      endTime:       result.endTime,
+      endTime,
       customerName:  _bkForm.customerName,
       phone:         _bkForm.phone,
       serviceType:   _bkForm.serviceType,
-      menuName:      _bkForm.menuName,
-      duration:      _bkForm.duration,
-      date:          _bkForm.date,
+      menuName,
+      duration:      dur,
+      date:          _bkForm.selectedDate,
       startTime:     _bkForm.selectedStartTime,
       address:       _bkForm.address,
     };
     _bkForm.submitting = false;
 
-    // 予約一覧も更新（バックグラウンド）
     loadFutureReservations();
     renderContent();
 
   } catch(err) {
     _bkForm.submitting = false;
     showToast('予約の登録に失敗しました: ' + err.message, true);
-    if (btn) { btn.disabled = false; btn.textContent = '予約を確定する'; }
+    renderContent();
   }
 }
 
