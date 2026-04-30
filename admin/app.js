@@ -708,8 +708,8 @@ function _buildCell(key, date, time, { resMap, openSet, calMap, intervalSet, tod
   if (res) {
     // ── 施術予約あり（タップで詳細・変更不可）
     cls    += isOpen ? ' reserved-open' : ' reserved';
-    const label = res.serviceType === '出張' ? '出' : '来';
-    content = `<div class="cell-res-inner">${res.customerName}<span class="cell-type-dot ${res.serviceType === '出張' ? 'dot-mobile' : 'dot-visit'}">${label}</span></div>`;
+    const typeClass = res.serviceType === '出張' ? 'dot-mobile' : 'dot-visit';
+    content = `<div class="cell-res-inner"><span class="cell-name">${res.customerName}</span><span class="cell-type-tag ${typeClass}">${res.serviceType}</span></div>`;
     onclick = `onclick="showToast('${res.customerName}（${res.serviceType}）', false)"`;
 
   } else if (modified && isOpen) {

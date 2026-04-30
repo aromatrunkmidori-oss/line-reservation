@@ -249,17 +249,17 @@
     .grid-cell.open          { color: #2E7D32; background: #F1F8E9; }
     .grid-cell.pending-open  { color: #1B5E20; background: #A5D6A7; } /* 変更あり→開放 */
     .grid-cell.pending-close { color: #B71C1C; background: #FFCDD2; } /* 変更あり→クローズ */
-    .grid-cell.reserved      {
-      background: #FFF3E0;
-      color: #E65100;
+    .grid-cell.reserved {
+      background: #F7F7F8;
+      color: #1A1A1A;
       font-size: 10px;
       font-weight: 600;
       line-height: 1.3;
       cursor: default;
     }
     .grid-cell.reserved-open {
-      background: #FFE0B2;
-      color: #BF360C;
+      background: #EEF7EE;
+      color: #1A1A1A;
       font-size: 10px;
       font-weight: 600;
       line-height: 1.3;
@@ -323,20 +323,40 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 1px;
+      gap: 2px;
+      overflow: hidden;
+      max-width: 52px;
+    }
+    .cell-name {
+      font-size: 10px;
+      font-weight: 600;
+      color: #1A1A1A;
       white-space: nowrap;
       overflow: hidden;
-      max-width: 50px;
+      text-overflow: ellipsis;
+      max-width: 52px;
+      letter-spacing: -0.2px;
     }
-    .cell-type-dot {
-      font-size: 9px;
+    .cell-type-tag {
+      display: inline-block;
+      font-size: 8px;
       font-weight: 700;
-      padding: 0 3px;
-      border-radius: 3px;
-      line-height: 1.4;
+      letter-spacing: 0.4px;
+      padding: 1px 5px;
+      border-radius: 10px;
+      line-height: 1.5;
+      white-space: nowrap;
     }
-    .dot-visit  { background: #C8E6C9; color: #1B5E20; }
-    .dot-mobile { background: #FFE0B2; color: #BF360C; }
+    .dot-visit  {
+      background: #E8F5E9;
+      color: #2E7D32;
+      border: 1px solid #A5D6A7;
+    }
+    .dot-mobile {
+      background: #FFF3E0;
+      color: #E65100;
+      border: 1px solid #FFCC80;
+    }
 
     /* ── タップ効果 ── */
     .reservation-card.tappable {
