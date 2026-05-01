@@ -72,6 +72,7 @@ function _defaultBkForm() {
     // グリッド（page2）
     gridStartDate:     '',
     gridAvailability:  null,   // { date: [times] | null }
+    gridDetailData:    null,   // { resMap, calMap, intervalSet } — 表示用詳細
     gridLoading:       false,
     gridCacheKey:      '',
     selectedDate:      '',
@@ -86,6 +87,16 @@ let _bkForm = _defaultBkForm();
 // ============================================================
 // 状態管理
 // ============================================================
+// 定休日リスト（getGridData / getSettings から取得後にセット）
+let _holidays = [];
+
+// 日付文字列が定休日かどうかを判定
+function _isHoliday(dateStr) {
+  const d   = new Date(dateStr + 'T00:00:00+09:00');
+  const dow = ['日曜日','月曜日','火曜日','水曜日','木曜日','金曜日','土曜日'][d.getDay()];
+  return _holidays.includes(dow) || _holidays.includes(dateStr);
+}
+
 const state = {
   phase: 'loading',
   tab: 'reservations',   // 'reservations' | 'grid' | 'booking'
@@ -610,7 +621,10 @@ function renderGridTab() {
     const m   = d.getMonth() + 1;
     const day = d.getDate();
     const wk  = ['日', '月', '火', '水', '木', '金', '土'][dow];
-    let cls   = 'grid-date-th';
+    if (_isHoliday(date)) {
+      return `<th class="grid-date-th grid-holiday-th" id="col-${date}">${m}/${day}<br><span style="font-weight:400;font-size:10px;">${wk}</span></th>`;
+    }
+    let cls = 'grid-date-th';
     if (date === today)  cls += ' today-col';
     else if (dow === 0)  cls += ' sun';
     else if (dow === 6)  cls += ' sat';
@@ -618,10 +632,17 @@ function renderGridTab() {
   }).join('');
 
   const { calMap, intervalSet } = state.gridData;
+  const numRows = GRID_TIMES.length;
 
   // ボディ行
-  const bodyRows = GRID_TIMES.map(time => {
+  const bodyRows = GRID_TIMES.map((time, rowIdx) => {
     const cells = dates.map(date => {
+      if (_isHoliday(date)) {
+        if (rowIdx === 0) {
+          return `<td class="grid-holiday-col" rowspan="${numRows}"><span class="grid-holiday-text">定休日</span></td>`;
+        }
+        return ''; // rowspan で埋まっているので省略
+      }
       const key = `${date}_${time}`;
       const [cls, content, onclick] = _buildCell(key, date, time, { resMap, openSet, calMap, intervalSet, today });
       return `<td class="${cls}" id="cell-${key}" ${onclick}>${content}</td>`;
@@ -879,6 +900,7 @@ async function loadGridData() {
 
     state.gridData         = { openSet, resMap, calMap, intervalSet };
     state.gridOriginalOpen = new Set(openSet); // スナップショット保存
+    if (Array.isArray(result.holidays)) _holidays = result.holidays;
 
   } catch(err) {
     state.gridData = null;
@@ -943,10 +965,11 @@ async function loadBookingMenus() {
   _bkMenusLoaded = true;
   try {
     const result = await apiGet({ action: 'getSettings' });
-    if (Array.isArray(result.menus) && result.menus.length > 0) {
+    if (Array.isArray(result.menus) && result.menus.length > 0)
       _bkMobileCourses = result.menus.map(m => (typeof m === 'string' ? m : m.name));
-      renderContent();
-    }
+    if (Array.isArray(result.holidays) && _holidays.length === 0)
+      _holidays = result.holidays;
+    renderContent();
   } catch(e) { /* デフォルト値を使う */ }
 }
 
@@ -1171,6 +1194,9 @@ function _renderBkGrid() {
       const wk  = ['日','月','火','水','木','金','土'][dow];
       const m   = d.getMonth() + 1;
       const day = d.getDate();
+      if (_isHoliday(date)) {
+        return `<th class="bk-cg-th bk-cg-holiday">${m}/${day}<br><span class="bk-cg-dow">${wk}</span></th>`;
+      }
       let cls = 'bk-cg-th';
       if (date === today)  cls += ' bk-cg-today';
       else if (dow === 0)  cls += ' bk-cg-sun';
@@ -1178,24 +1204,53 @@ function _renderBkGrid() {
       return `<th class="${cls}">${m}/${day}<br><span class="bk-cg-dow">${wk}</span></th>`;
     }).join('');
 
-    const bodyRows = visibleTimes.map(time => {
+    const detail    = f.gridDetailData;
+    const numRows   = visibleTimes.length;
+
+    const bodyRows = visibleTimes.map((time, rowIdx) => {
       const cells = dates.map(date => {
+        if (_isHoliday(date)) {
+          if (rowIdx === 0) {
+            return `<td class="bk-cg-cell bk-cg-holiday-col" rowspan="${numRows}"><span class="grid-holiday-text">定休日</span></td>`;
+          }
+          return '';
+        }
         const key     = `${date}_${time}`;
         const isAvail = Array.isArray(avail[date]) && avail[date].includes(time);
         const isSel   = key === selectedKey;
+
         if (isSel) {
           return `<td class="bk-cg-cell bk-cg-sel" id="bkcg-${key}"
                       onclick="bkSelectGridSlot('${date}','${time}')">○</td>`;
-        } else if (isAvail) {
+        }
+        if (isAvail) {
           return `<td class="bk-cg-cell bk-cg-open" id="bkcg-${key}"
                       onclick="bkSelectGridSlot('${date}','${time}')">○</td>`;
-        } else {
-          return `<td class="bk-cg-cell bk-cg-closed">−</td>`;
         }
+
+        // 詳細データがあれば理由を表示
+        if (detail) {
+          const res = detail.resMap.get(key);
+          if (res) {
+            const tc = res.serviceType === '出張' ? 'dot-mobile' : 'dot-visit';
+            return `<td class="bk-cg-cell bk-cg-reserved">
+              <div class="cell-res-inner">
+                <span class="cell-name">${_bkEsc(res.customerName)}</span>
+                <span class="cell-type-tag ${tc}">${res.serviceType}</span>
+              </div></td>`;
+          }
+          const cal = detail.calMap.get(key);
+          if (cal) {
+            const t = cal.title.length > 5 ? cal.title.slice(0, 5) + '…' : cal.title;
+            return `<td class="bk-cg-cell bk-cg-cal"><div class="cell-cal-inner">${_bkEsc(t)}</div></td>`;
+          }
+          if (detail.intervalSet.has(key)) {
+            return `<td class="bk-cg-cell bk-cg-interval"><span class="cell-interval-label">準備</span></td>`;
+          }
+        }
+
+        return `<td class="bk-cg-cell bk-cg-closed">−</td>`;
       }).join('');
-      const dur = _bkTotalDuration();
-      const endMin = timeToMin(time) + (dur || 0);
-      const endStr = minutesToTimeStr(endMin);
       return `<tr><td class="bk-cg-time">${time}</td>${cells}</tr>`;
     }).join('');
 
@@ -1437,21 +1492,87 @@ async function _loadBkGrid() {
   renderContent();
 
   try {
-    const result = await apiGet({
-      action:      'getAvailableGrid',
-      startDate:   _bkForm.gridStartDate,
-      days:        BK_GRID_DAYS,
-      duration:    dur,
-      serviceType: _bkForm.serviceType,
-    });
-    _bkForm.gridAvailability = result;
+    // 空き枠（getAvailableGrid）と詳細（getGridData）を並列取得
+    const [availResult, detailResult] = await Promise.all([
+      apiGet({
+        action:      'getAvailableGrid',
+        startDate:   _bkForm.gridStartDate,
+        days:        BK_GRID_DAYS,
+        duration:    dur,
+        serviceType: _bkForm.serviceType,
+      }),
+      apiGet({
+        action:    'getGridData',
+        startDate: _bkForm.gridStartDate,
+        days:      BK_GRID_DAYS,
+      }),
+    ]);
+
+    _bkForm.gridAvailability = availResult;
     _bkForm.gridCacheKey     = cacheKey;
+    _bkForm.gridDetailData   = _parseBkGridDetail(detailResult);
   } catch(e) {
     _bkForm.gridAvailability = {};
+    _bkForm.gridDetailData   = null;
   }
 
   _bkForm.gridLoading = false;
   renderContent();
+}
+
+// getGridData のレスポンスを resMap / calMap / intervalSet に変換
+function _parseBkGridDetail(result) {
+  if (!result || result.error) return null;
+
+  const resMap = new Map();
+  (result.reservations || []).forEach(res => {
+    const start = timeToMin(res.startTime);
+    const end   = timeToMin(res.endTime);
+    for (let m = start; m < end; m += 30) {
+      const t = minutesToTimeStr(m);
+      if (GRID_TIMES.includes(t))
+        resMap.set(`${res.date}_${t}`, { customerName: res.customerName, serviceType: res.serviceType });
+    }
+  });
+
+  const calMap = new Map();
+  (result.calendarEvents || []).forEach(ev => {
+    const start      = timeToMin(ev.startTime);
+    const end        = timeToMin(ev.endTime);
+    const blockStart = Math.floor(start / 30) * 30;
+    const blockEnd   = end > start ? Math.ceil(end / 30) * 30 : blockStart + 30;
+    for (let m = blockStart; m < blockEnd; m += 30) {
+      const t = minutesToTimeStr(m);
+      if (GRID_TIMES.includes(t) && !calMap.has(`${ev.date}_${t}`))
+        calMap.set(`${ev.date}_${t}`, { title: ev.title });
+    }
+  });
+
+  const intervalMin    = result.intervalMinutes        || 15;
+  const calIntervalMin = result.calendarIntervalMobile || 90;
+  const intervalSet    = new Set();
+
+  (result.reservations || []).forEach(res => {
+    const endMin = timeToMin(res.endTime);
+    for (let m = endMin; m < endMin + intervalMin; m += 30) {
+      const t = minutesToTimeStr(m);
+      if (GRID_TIMES.includes(t)) intervalSet.add(`${res.date}_${t}`);
+    }
+  });
+  (result.calendarEvents || []).forEach(ev => {
+    const evStart = timeToMin(ev.startTime);
+    const evEnd   = timeToMin(ev.endTime);
+    for (let m = Math.floor((evStart - calIntervalMin) / 30) * 30; m < evStart; m += 30) {
+      const t = minutesToTimeStr(m);
+      if (GRID_TIMES.includes(t) && !calMap.has(`${ev.date}_${t}`)) intervalSet.add(`${ev.date}_${t}`);
+    }
+    for (let m = evEnd; m < evEnd + calIntervalMin; m += 30) {
+      const t = minutesToTimeStr(m);
+      if (GRID_TIMES.includes(t) && !calMap.has(`${ev.date}_${t}`)) intervalSet.add(`${ev.date}_${t}`);
+    }
+  });
+
+  return { resMap, calMap, intervalSet };
 }
 
 function bkChangeGrid(delta) {
@@ -1462,6 +1583,7 @@ function bkChangeGrid(delta) {
   const next = dateToStr(d);
   _bkForm.gridStartDate    = next < today ? today : next;
   _bkForm.gridAvailability = null;
+  _bkForm.gridDetailData   = null;
   _bkForm.gridCacheKey     = '';
   _bkForm.selectedDate     = '';
   _bkForm.selectedStartTime = null;

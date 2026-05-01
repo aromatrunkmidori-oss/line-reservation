@@ -983,6 +983,37 @@
       color: var(--border);
       background: var(--bg);
     }
+    /* ── 定休日列（枠管理グリッド）── */
+    .grid-date-th.grid-holiday-th { background: #FFEBEE; color: #C62828; }
+    .grid-cell.grid-holiday-col   { background: #FFEBEE; text-align: center; vertical-align: middle; cursor: default; }
+    /* ── 定休日列（代理予約グリッド）── */
+    .bk-cg-th.bk-cg-holiday { background: #FFEBEE; color: #C62828; }
+    .bk-cg-cell.bk-cg-holiday-col { background: #FFEBEE; text-align: center; vertical-align: middle; cursor: default; }
+
+    .bk-cg-cell.bk-cg-reserved {
+      background: #F7F7F8;
+      cursor: default;
+      vertical-align: middle;
+    }
+    .bk-cg-cell.bk-cg-cal {
+      background: #E8EAF6;
+      color: #283593;
+      font-size: 9px;
+      font-weight: 600;
+      line-height: 1.3;
+      cursor: default;
+      vertical-align: middle;
+    }
+    .bk-cg-cell.bk-cg-interval {
+      background: repeating-linear-gradient(
+        -45deg,
+        #FAFAFA 0px, #FAFAFA 4px,
+        #EEEEEE 4px, #EEEEEE 8px
+      );
+      color: #BDBDBD;
+      cursor: default;
+      vertical-align: middle;
+    }
   </style>
 </head>
 <body>
