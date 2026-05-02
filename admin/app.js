@@ -1858,3 +1858,12 @@ async function initApp() {
 }
 
 initApp();
+
+// ページが非表示→表示に戻ったとき（他タブから戻ってきたとき）に予約一覧を自動更新
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && state.phase === 'main') {
+    if (state.tab === 'reservations' && !_reschedule) {
+      loadFutureReservations();
+    }
+  }
+});
