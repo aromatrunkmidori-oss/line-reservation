@@ -30,7 +30,31 @@ const GRID_TIMES = (() => {
 // ============================================================
 // 予約変更フォームの一時状態
 // ============================================================
-let _reschedule = null; // { reservationId, serviceType, duration, selectedStartTime, selectedEndTime }
+// _reschedule: null のとき非アクティブ
+// アクティブ時は予約変更グリッド画面を表示する
+let _reschedule = null;
+
+function _defaultReschedule(r) {
+  return {
+    reservationId:    r.reservationId,
+    serviceType:      r.serviceType,
+    duration:         r.duration,
+    customerName:     r.customerName,
+    menuName:         r.menuName,
+    currentDate:      r.date,
+    currentStartTime: r.startTime,
+    currentEndTime:   r.endTime,
+    // グリッド状態
+    gridStartDate:    todayStr(),
+    gridAvailability: null,
+    gridDetailData:   null,
+    gridLoading:      false,
+    gridCacheKey:     '',
+    selectedDate:     '',
+    selectedStartTime: null,
+    submitting:       false,
+  };
+}
 
 // ============================================================
 // 代理予約 — マスタデータ
@@ -253,7 +277,8 @@ function renderMain() {
 function renderContent() {
   const el = document.getElementById('main-content');
   if (!el) return;
-  if      (state.tab === 'reservations') el.innerHTML = renderReservationsTab();
+  if      (_reschedule)                  el.innerHTML = renderRescheduleGrid();
+  else if (state.tab === 'reservations') el.innerHTML = renderReservationsTab();
   else if (state.tab === 'grid')         el.innerHTML = renderGridTab();
   else                                   el.innerHTML = renderBookingTab();
 }
@@ -424,173 +449,268 @@ async function handleAdminCancel(reservationId) {
 // ============================================================
 // 予約日時変更フォーム
 // ============================================================
+// 予約変更ボタン → モーダルを閉じてグリッド画面へ
 function showRescheduleForm(reservationId) {
   const r = state.futureReservations.find(x => x.reservationId === reservationId);
   if (!r) return;
+  _reschedule = _defaultReschedule(r);
+  closeReservationDetail();
+  renderContent();
+  _loadRsGrid();
+}
 
-  _reschedule = { reservationId, serviceType: r.serviceType, duration: r.duration,
-                  selectedStartTime: null, selectedEndTime: null };
+// 予約変更グリッド画面を描画
+function renderRescheduleGrid() {
+  const rs    = _reschedule;
+  const today = todayStr();
+  const start = rs.gridStartDate || today;
+  const startMs = new Date(start + 'T00:00:00+09:00').getTime();
+  const dates = [];
+  for (let i = 0; i < BK_GRID_DAYS; i++)
+    dates.push(dateToStr(new Date(startMs + i * 86400000)));
 
-  const footer = document.getElementById('modal-footer');
-  if (!footer) return;
+  // ヘッダー：変更前の予約情報
+  const currentInfo = `
+    <div class="rs-header">
+      <button class="btn-back-reschedule" onclick="cancelReschedule()">← 戻る</button>
+      <div class="rs-current">
+        <span class="rs-current-label">変更前</span>
+        <span class="rs-current-val">${formatDateLabel(rs.currentDate)}&nbsp;${rs.currentStartTime}〜${rs.currentEndTime}</span>
+      </div>
+      <div class="rs-current">
+        <span class="rs-current-label">お客様</span>
+        <span class="rs-current-val">${_bkEsc(rs.customerName)}（${rs.duration}分）</span>
+      </div>
+    </div>`;
 
-  footer.innerHTML = `
-    <div class="reschedule-form">
-      <div class="reschedule-date-row">
-        <input type="date" id="reschedule-date-input" class="reschedule-date-input"
-               value="${r.date}" min="${todayStr()}"
-               onchange="onRescheduleDateChange()">
-        <button class="reschedule-check-btn" id="reschedule-check-btn"
-                onclick="loadRescheduleSlots('${reservationId}')">
-          空き枠を確認
+  let gridHtml;
+  if (rs.gridLoading || !rs.gridAvailability) {
+    gridHtml = `<div class="bk-grid-loading"><div class="spinner"></div><span>空き枠を確認中...</span></div>`;
+  } else {
+    const avail       = rs.gridAvailability;
+    const detail      = rs.gridDetailData;
+    const selectedKey = rs.selectedDate && rs.selectedStartTime
+      ? `${rs.selectedDate}_${rs.selectedStartTime}` : null;
+
+    const hasAnyAvail = dates.some(d => Array.isArray(avail[d]) && avail[d].length > 0);
+
+    let visibleTimes;
+    if (hasAnyAvail) {
+      const allAvailSet = new Set();
+      dates.forEach(d => { if (Array.isArray(avail[d])) avail[d].forEach(t => allAvailSet.add(t)); });
+      const minIdx = GRID_TIMES.findIndex(t => allAvailSet.has(t));
+      const maxIdx = GRID_TIMES.reduce((acc, t, i) => allAvailSet.has(t) ? i : acc, minIdx);
+      visibleTimes = GRID_TIMES.slice(Math.max(0, minIdx - 1), maxIdx + 2);
+    } else {
+      visibleTimes = GRID_TIMES;
+    }
+
+    const noAvailNotice = hasAnyAvail ? '' :
+      `<p class="bk-no-avail">予約可能な時間帯がありません。</p>`;
+
+    const headerCells = dates.map(date => {
+      const d   = new Date(date + 'T00:00:00+09:00');
+      const dow = d.getDay();
+      const wk  = ['日','月','火','水','木','金','土'][dow];
+      const m   = d.getMonth() + 1;
+      const day = d.getDate();
+      if (_isHoliday(date)) return `<th class="bk-cg-th bk-cg-holiday">${m}/${day}<br><span class="bk-cg-dow">${wk}</span></th>`;
+      let cls = 'bk-cg-th';
+      if (date === today)  cls += ' bk-cg-today';
+      else if (dow === 0)  cls += ' bk-cg-sun';
+      else if (dow === 6)  cls += ' bk-cg-sat';
+      return `<th class="${cls}">${m}/${day}<br><span class="bk-cg-dow">${wk}</span></th>`;
+    }).join('');
+
+    const numRows = visibleTimes.length;
+    const bodyRows = visibleTimes.map((time, rowIdx) => {
+      const cells = dates.map(date => {
+        if (_isHoliday(date)) {
+          return rowIdx === 0
+            ? `<td class="bk-cg-cell bk-cg-holiday-col" rowspan="${numRows}"><span class="grid-holiday-text">定休日</span></td>`
+            : '';
+        }
+        const key     = `${date}_${time}`;
+        const isAvail = Array.isArray(avail[date]) && avail[date].includes(time);
+        const isSel   = key === selectedKey;
+        if (isSel) return `<td class="bk-cg-cell bk-cg-sel" id="rscg-${key}" onclick="rsSelectSlot('${date}','${time}')">○</td>`;
+        if (isAvail) return `<td class="bk-cg-cell bk-cg-open" id="rscg-${key}" onclick="rsSelectSlot('${date}','${time}')">○</td>`;
+        if (detail) {
+          const res = detail.resMap.get(key);
+          if (res) {
+            const tc = res.serviceType === '出張' ? 'dot-mobile' : 'dot-visit';
+            return `<td class="bk-cg-cell bk-cg-reserved"><div class="cell-res-inner"><span class="cell-name">${_bkEsc(res.customerName)}</span><span class="cell-type-tag ${tc}">${res.serviceType}</span></div></td>`;
+          }
+          const cal = detail.calMap.get(key);
+          if (cal) return `<td class="bk-cg-cell bk-cg-cal"><div class="cell-cal-inner">${_bkEsc(cal.title.length > 5 ? cal.title.slice(0,5)+'…' : cal.title)}</div></td>`;
+          if (detail.intervalSet.has(key)) return `<td class="bk-cg-cell bk-cg-interval"><span class="cell-interval-label">準備</span></td>`;
+        }
+        return `<td class="bk-cg-cell bk-cg-closed">−</td>`;
+      }).join('');
+      return `<tr><td class="bk-cg-time">${time}</td>${cells}</tr>`;
+    }).join('');
+
+    const prevDate     = dateToStr(new Date(startMs - BK_GRID_DAYS * 86400000));
+    const prevDisabled = prevDate < today;
+    const nav = `
+      <div class="bk-cg-nav">
+        <button class="bk-cg-nav-btn" onclick="rsChangeGrid(-${BK_GRID_DAYS})"
+                ${prevDisabled ? 'disabled' : ''}>‹ 前の${BK_GRID_DAYS}日</button>
+        <button class="bk-cg-nav-btn" onclick="rsChangeGrid(${BK_GRID_DAYS})">次の${BK_GRID_DAYS}日 ›</button>
+      </div>`;
+
+    const selBanner = (rs.selectedDate && rs.selectedStartTime) ? `
+      <div class="bk-cg-banner">
+        ${formatDateLabel(rs.selectedDate)}&nbsp;
+        ${rs.selectedStartTime}〜${minutesToTimeStr(timeToMin(rs.selectedStartTime) + rs.duration)}
+      </div>` : '';
+
+    gridHtml = `
+      ${nav}
+      ${noAvailNotice}
+      ${selBanner}
+      <div class="bk-cg-scroll">
+        <table class="bk-cg-table">
+          <thead><tr><th class="bk-cg-corner">時間</th>${headerCells}</tr></thead>
+          <tbody>${bodyRows}</tbody>
+        </table>
+      </div>`;
+  }
+
+  const canConfirm = !!(rs.selectedDate && rs.selectedStartTime);
+  const endTime    = canConfirm ? minutesToTimeStr(timeToMin(rs.selectedStartTime) + rs.duration) : '';
+
+  return `
+    <div class="bk-scroll">
+      ${currentInfo}
+      ${gridHtml}
+      <div class="bk-grid-footer" style="margin-top:12px;">
+        <button class="bk-btn-secondary" style="width:auto;padding:14px 18px;"
+                onclick="cancelReschedule()">← 戻る</button>
+        <button class="bk-submit-btn bk-submit-inline" id="rs-confirm-btn"
+                ${canConfirm && !rs.submitting ? '' : 'disabled'}
+                onclick="handleAdminReschedule()">
+          ${rs.submitting ? '変更中...' : canConfirm
+              ? `${formatDateLabel(rs.selectedDate)} ${rs.selectedStartTime}〜${endTime} に変更する`
+              : '日時を選んでください'}
         </button>
       </div>
-      <div id="reschedule-slots-container" class="reschedule-slots-container"></div>
-      <button class="btn-confirm-reschedule" id="confirm-reschedule-btn"
-              style="display:none"
-              onclick="handleAdminReschedule('${reservationId}')">
-        この日時に変更する
-      </button>
-      <button class="btn-back-reschedule" onclick="cancelRescheduleForm('${reservationId}')">
-        ← 戻る
-      </button>
     </div>`;
 }
 
-function onRescheduleDateChange() {
-  const container = document.getElementById('reschedule-slots-container');
-  if (container) container.innerHTML = '';
-  const confirmBtn = document.getElementById('confirm-reschedule-btn');
-  if (confirmBtn) confirmBtn.style.display = 'none';
-  if (_reschedule) { _reschedule.selectedStartTime = null; _reschedule.selectedEndTime = null; }
-}
-
-async function loadRescheduleSlots(reservationId) {
-  if (!_reschedule) return;
-  const r = state.futureReservations.find(x => x.reservationId === reservationId);
-  if (!r) return;
-
-  const dateInput = document.getElementById('reschedule-date-input');
-  if (!dateInput || !dateInput.value) return;
-  const newDate = dateInput.value;
-
-  const container = document.getElementById('reschedule-slots-container');
-  const checkBtn  = document.getElementById('reschedule-check-btn');
-  if (container) container.innerHTML = '<div class="reschedule-loading">確認中...</div>';
-  if (checkBtn)  checkBtn.disabled = true;
-  _reschedule.selectedStartTime = null;
-  _reschedule.selectedEndTime   = null;
-  const confirmBtn = document.getElementById('confirm-reschedule-btn');
-  if (confirmBtn) confirmBtn.style.display = 'none';
-
+// グリッドデータ取得
+async function _loadRsGrid() {
+  const rs = _reschedule;
+  if (!rs) return;
+  const cacheKey = `${rs.serviceType}-${rs.duration}-${rs.gridStartDate}`;
+  if (rs.gridCacheKey === cacheKey && rs.gridAvailability) return;
+  if (rs.gridLoading) return;
+  rs.gridLoading = true;
+  renderContent();
   try {
-    const result = await apiGet({
-      action:      'getAvailableSlots',
-      date:        newDate,
-      duration:    String(r.duration),
-      serviceType: r.serviceType,
-    });
-
-    if (result.error) throw new Error(result.error);
-
-    const slots = (result.slots || []).filter(s => s.available);
-
-    if (!result.available || slots.length === 0) {
-      container.innerHTML = `<div class="reschedule-no-slots">${result.reason || 'この日に空き枠はありません'}</div>`;
-    } else {
-      container.innerHTML = `
-        <div class="reschedule-slots-label">空き時間を選択（${r.duration}分）</div>
-        <div class="reschedule-slots-grid" id="reschedule-slots-grid">
-          ${slots.map(s => {
-            const endMin = timeToMin(s.time) + r.duration;
-            const end    = minutesToTimeStr(endMin);
-            return `<button class="reschedule-slot-btn"
-                            data-start="${s.time}" data-end="${end}"
-                            onclick="selectRescheduleSlot('${s.time}','${end}')">
-                      ${s.time}
-                    </button>`;
-          }).join('')}
-        </div>`;
-    }
-  } catch(err) {
-    container.innerHTML = `<div class="reschedule-no-slots">読み込みに失敗しました</div>`;
+    const [availResult, detailResult] = await Promise.all([
+      apiGet({ action: 'getAvailableGrid', startDate: rs.gridStartDate, days: BK_GRID_DAYS, duration: rs.duration, serviceType: rs.serviceType }),
+      apiGet({ action: 'getGridData', startDate: rs.gridStartDate, days: BK_GRID_DAYS }),
+    ]);
+    rs.gridAvailability = availResult;
+    rs.gridDetailData   = _parseBkGridDetail(detailResult);
+    rs.gridCacheKey     = cacheKey;
+  } catch(e) {
+    rs.gridAvailability = {};
+    rs.gridDetailData   = null;
   }
-
-  if (checkBtn) checkBtn.disabled = false;
+  rs.gridLoading = false;
+  renderContent();
 }
 
-function selectRescheduleSlot(startTime, endTime) {
-  if (!_reschedule) return;
-  _reschedule.selectedStartTime = startTime;
-  _reschedule.selectedEndTime   = endTime;
+// 前後ナビゲーション
+function rsChangeGrid(delta) {
+  const rs = _reschedule;
+  if (!rs) return;
+  const today = todayStr();
+  const d = new Date((rs.gridStartDate || today) + 'T00:00:00+09:00');
+  d.setDate(d.getDate() + delta);
+  const next = dateToStr(d);
+  rs.gridStartDate    = next < today ? today : next;
+  rs.gridAvailability = null;
+  rs.gridDetailData   = null;
+  rs.gridCacheKey     = '';
+  rs.selectedDate     = '';
+  rs.selectedStartTime = null;
+  renderContent();
+  _loadRsGrid();
+}
 
-  document.querySelectorAll('.reschedule-slot-btn').forEach(btn => {
-    btn.classList.toggle('selected', btn.dataset.start === startTime);
+// スロット選択（DOM外科更新）
+function rsSelectSlot(date, time) {
+  const rs = _reschedule;
+  if (!rs) return;
+  rs.selectedDate      = date;
+  rs.selectedStartTime = time;
+
+  document.querySelectorAll('.bk-cg-cell.bk-cg-open, .bk-cg-cell.bk-cg-sel').forEach(el => {
+    el.className = el.className.replace('bk-cg-sel', 'bk-cg-open');
   });
+  const el = document.getElementById(`rscg-${date}_${time}`);
+  if (el) el.className = el.className.replace('bk-cg-open', 'bk-cg-sel');
 
-  const confirmBtn = document.getElementById('confirm-reschedule-btn');
-  const dateInput  = document.getElementById('reschedule-date-input');
-  if (confirmBtn) {
-    const label = dateInput ? formatDateLabel(dateInput.value) : '';
-    confirmBtn.textContent = `${label} ${startTime}〜${endTime} に変更する（お客様に通知が届きます）`;
-    confirmBtn.style.display = 'block';
+  // バナーと確定ボタンを更新
+  const endTime = minutesToTimeStr(timeToMin(time) + rs.duration);
+  const bannerHtml = `${formatDateLabel(date)}&nbsp;${time}〜${endTime}`;
+  const existing = document.querySelector('.bk-cg-banner');
+  if (existing) {
+    existing.innerHTML = bannerHtml;
+  } else {
+    const nav = document.querySelector('.bk-cg-nav');
+    if (nav) {
+      const b = document.createElement('div');
+      b.className = 'bk-cg-banner';
+      b.innerHTML = bannerHtml;
+      nav.insertAdjacentElement('afterend', b);
+    }
+  }
+  const btn = document.getElementById('rs-confirm-btn');
+  if (btn) {
+    btn.disabled = false;
+    btn.textContent = `${formatDateLabel(date)} ${time}〜${endTime} に変更する`;
   }
 }
 
-async function handleAdminReschedule(reservationId) {
-  if (!_reschedule || !_reschedule.selectedStartTime) return;
-
-  const dateInput = document.getElementById('reschedule-date-input');
-  if (!dateInput || !dateInput.value) return;
-  const newDate      = dateInput.value;
-  const newStartTime = _reschedule.selectedStartTime;
-  const newEndTime   = _reschedule.selectedEndTime;
-
-  const confirmBtn = document.getElementById('confirm-reschedule-btn');
-  if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = '変更中...'; }
-
+// 確定
+async function handleAdminReschedule() {
+  const rs = _reschedule;
+  if (!rs || !rs.selectedDate || !rs.selectedStartTime) return;
+  rs.submitting = true;
+  const btn = document.getElementById('rs-confirm-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '変更中...'; }
   try {
     const result = await apiPost({
-      action:       'adminUpdateReservation',
-      reservationId,
-      newDate,
-      newStartTime,
+      action:        'adminUpdateReservation',
+      reservationId: rs.reservationId,
+      newDate:       rs.selectedDate,
+      newStartTime:  rs.selectedStartTime,
     });
     if (result.error) throw new Error(result.error);
-
-    // ローカル状態を更新
-    const r = state.futureReservations.find(x => x.reservationId === reservationId);
+    const r = state.futureReservations.find(x => x.reservationId === rs.reservationId);
     if (r) {
-      r.date      = newDate;
-      r.startTime = newStartTime;
-      r.endTime   = result.newEndTime || newEndTime;
+      r.date      = rs.selectedDate;
+      r.startTime = rs.selectedStartTime;
+      r.endTime   = result.newEndTime || minutesToTimeStr(timeToMin(rs.selectedStartTime) + rs.duration);
     }
     _reschedule = null;
-
-    closeReservationDetail();
     showToast('予約の日時を変更しました');
     renderContent();
   } catch(err) {
+    rs.submitting = false;
     showToast('変更に失敗しました: ' + err.message, true);
-    if (confirmBtn) { confirmBtn.disabled = false; }
+    renderContent();
   }
 }
 
-function cancelRescheduleForm(reservationId) {
-  const r = state.futureReservations.find(x => x.reservationId === reservationId);
-  if (!r) return;
+// キャンセル → 予約一覧に戻る
+function cancelReschedule() {
   _reschedule = null;
-
-  const footer = document.getElementById('modal-footer');
-  if (!footer) return;
-  footer.innerHTML = `
-    <button class="btn-reschedule-reservation" onclick="showRescheduleForm('${r.reservationId}')">
-      日時を変更する
-    </button>
-    <button class="btn-cancel-reservation" id="cancel-reservation-btn"
-            onclick="handleAdminCancel('${r.reservationId}')">
-      この予約をキャンセルする
-    </button>`;
+  renderContent();
 }
 
 // ============================================================
@@ -1111,7 +1231,8 @@ function _renderBkInfo() {
           <label class="bk-label">氏名 <span class="bk-required">*</span></label>
           <input type="text" class="bk-input" id="bk-name"
                  value="${_bkEsc(f.customerName)}"
-                 placeholder="山田 太郎">
+                 placeholder="山田 太郎"
+                 oninput="bkUpdateNextBtn()">
         </div>
         <div class="bk-field">
           <label class="bk-label">電話番号</label>
@@ -1138,11 +1259,12 @@ function _renderBkInfo() {
           <div class="bk-section-title">出張先住所 <span class="bk-required">*</span></div>
           <input type="text" class="bk-input" id="bk-address"
                  value="${_bkEsc(f.address)}"
-                 placeholder="東京都渋谷区...">
+                 placeholder="東京都渋谷区..."
+                 oninput="bkUpdateNextBtn()">
         </div>` : ''}
 
       <div class="bk-submit-area">
-        <button class="bk-submit-btn" ${p1Valid ? '' : 'disabled'}
+        <button class="bk-submit-btn" id="bk-next-btn" ${p1Valid ? '' : 'disabled'}
                 onclick="bkGoToGrid()">
           日時を選ぶ →
         </button>
@@ -1406,6 +1528,16 @@ function renderBookingTab() {
 // ============================================================
 // 代理予約 — ページ遷移
 // ============================================================
+// Page1 の「日時を選ぶ」ボタンの disabled を DOM 直接更新（再描画なし）
+function bkUpdateNextBtn() {
+  const nameEl    = document.getElementById('bk-name');
+  const addressEl = document.getElementById('bk-address');
+  if (nameEl)    _bkForm.customerName = nameEl.value;
+  if (addressEl) _bkForm.address      = addressEl.value;
+  const btn = document.getElementById('bk-next-btn');
+  if (btn) btn.disabled = !_bkPage1Valid();
+}
+
 function bkGoToGrid() {
   _bkSyncInputs();
   if (!_bkPage1Valid()) return;

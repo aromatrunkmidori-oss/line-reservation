@@ -983,6 +983,28 @@
       color: var(--border);
       background: var(--bg);
     }
+    /* ── 予約変更グリッド ヘッダー ── */
+    .rs-header {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      padding: 10px 0 14px;
+      border-bottom: 1px solid var(--border-light);
+      margin-bottom: 14px;
+    }
+    .rs-current {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      font-size: 13px;
+    }
+    .rs-current-label {
+      flex: 0 0 44px;
+      font-size: 11px;
+      color: var(--text-secondary);
+    }
+    .rs-current-val { color: var(--text-primary); font-weight: 500; }
+
     /* ── 定休日列（枠管理グリッド）── */
     .grid-date-th.grid-holiday-th { background: #FFEBEE; color: #C62828; }
     .grid-cell.grid-holiday-col   { background: #FFEBEE; text-align: center; vertical-align: middle; cursor: default; }
