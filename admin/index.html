@@ -179,14 +179,14 @@
       position: sticky;
       top: 0; left: 0;
       z-index: 30;
-      background: var(--bg-card);
-      width: 52px; min-width: 52px;
+      background: #F0F0F0;
+      width: 54px; min-width: 54px;
       font-size: 10px;
       color: var(--text-secondary);
       text-align: center;
       padding: 6px 2px;
-      border-right: 2px solid var(--border);
-      border-bottom: 2px solid var(--border);
+      border-right: 2px solid #C8C8C8;
+      border-bottom: 2px solid #C8C8C8;
     }
 
     /* 日付ヘッダー（sticky top） */
@@ -194,20 +194,24 @@
       position: sticky;
       top: 0;
       z-index: 20;
-      background: var(--bg-card);
-      min-width: 54px;
+      background: #F5F5F5;
+      min-width: 56px;
       text-align: center;
-      padding: 5px 2px;
-      border-right: 1px solid var(--border-light);
-      border-bottom: 2px solid var(--border);
+      padding: 6px 2px;
+      border-right: 1px solid #DADADA;
+      border-bottom: 2px solid #C8C8C8;
       font-size: 11px;
-      font-weight: 600;
-      line-height: 1.4;
+      font-weight: 700;
+      line-height: 1.5;
       white-space: nowrap;
       color: var(--text-primary);
     }
-    .grid-date-th.today-col { background: #E8F5E9; color: var(--primary); }
-    .grid-date-th.sun       { color: #EF5350; }
+    .grid-date-th.today-col {
+      background: #DFF2DF;
+      color: var(--primary);
+      border-bottom-color: var(--primary);
+    }
+    .grid-date-th.sun       { color: #D32F2F; }
     .grid-date-th.sat       { color: #1565C0; }
     .grid-date-th.today-col.sun,
     .grid-date-th.today-col.sat { color: var(--primary); }
@@ -217,38 +221,48 @@
       position: sticky;
       left: 0;
       z-index: 10;
-      background: var(--bg-card);
-      width: 52px; min-width: 52px;
+      background: #F5F5F5;
+      width: 54px; min-width: 54px;
       font-size: 11px;
       font-weight: 600;
-      color: var(--text-secondary);
+      color: #666;
       text-align: right;
-      padding: 0 6px 0 0;
-      border-right: 2px solid var(--border);
-      border-bottom: 1px solid var(--border-light);
+      padding: 0 7px 0 0;
+      border-right: 2px solid #C8C8C8;
+      border-bottom: 1px solid #DADADA;
       white-space: nowrap;
-      height: 38px;
+      height: 40px;
+    }
+    /* 1時間ごとに区切り線を強調（偶数インデックス = 0分の行） */
+    tr:nth-child(odd) .grid-time-td {
+      border-bottom-color: #C8C8C8;
     }
 
     /* データセル */
     .grid-cell {
-      min-width: 54px;
-      height: 38px;
+      min-width: 56px;
+      height: 40px;
       text-align: center;
       vertical-align: middle;
-      border-right: 1px solid var(--border-light);
-      border-bottom: 1px solid var(--border-light);
+      border-right: 1px solid #DADADA;
+      border-bottom: 1px solid #DADADA;
       cursor: pointer;
-      font-size: 14px;
+      font-size: 15px;
       font-weight: 700;
       -webkit-tap-highlight-color: transparent;
       user-select: none;
       padding: 2px 3px;
+      transition: opacity .12s;
     }
-    .grid-cell.closed        { color: #D0D0D0; background: #FAFAFA; }
-    .grid-cell.open          { color: #2E7D32; background: #F1F8E9; }
-    .grid-cell.pending-open  { color: #1B5E20; background: #A5D6A7; } /* 変更あり→開放 */
-    .grid-cell.pending-close { color: #B71C1C; background: #FFCDD2; } /* 変更あり→クローズ */
+    .grid-cell:active { opacity: .65; }
+    /* 1時間ごとに下線を強調 */
+    tr:nth-child(odd) .grid-cell {
+      border-bottom-color: #C8C8C8;
+    }
+    .grid-cell.closed        { color: #C4C4C4; background: #F8F8F8; font-size: 13px; }
+    .grid-cell.open          { color: #1B5E20; background: #E8F5E9; font-size: 16px; }
+    .grid-cell.pending-open  { color: #1B5E20; background: #81C784; } /* 変更あり→開放 */
+    .grid-cell.pending-close { color: #B71C1C; background: #EF9A9A; } /* 変更あり→クローズ */
     .grid-cell.reserved {
       background: #F7F7F8;
       color: #1A1A1A;
@@ -266,8 +280,8 @@
       cursor: default;
     }
     /* 今日の列 */
-    .grid-cell.today-col.closed        { background: #F5FDF5; }
-    .grid-cell.today-col.open          { background: #DCEDC8; }
+    .grid-cell.today-col.closed        { background: #F0FAF0; }
+    .grid-cell.today-col.open          { background: #C8E6C9; }
 
     /* ── プライベートカレンダー予定 ── */
     .grid-cell.cal-event {
@@ -1007,7 +1021,21 @@
 
     /* ── 定休日列（枠管理グリッド）── */
     .grid-date-th.grid-holiday-th { background: #FFEBEE; color: #C62828; }
-    .grid-cell.grid-holiday-col   { background: #FFEBEE; text-align: center; vertical-align: middle; cursor: default; }
+    .grid-holiday-col {
+      background: #FFEBEE;
+      text-align: center;
+      vertical-align: middle;
+      cursor: default;
+      padding: 0;
+    }
+    .grid-holiday-inner {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      height: 100%;
+      min-height: 120px;
+    }
     /* ── 定休日列（代理予約グリッド）── */
     .bk-cg-th.bk-cg-holiday { background: #FFEBEE; color: #C62828; }
     .bk-cg-cell.bk-cg-holiday-col { background: #FFEBEE; text-align: center; vertical-align: middle; cursor: default; }

@@ -844,7 +844,7 @@ function renderGridTab() {
     const cells = dates.map(date => {
       if (_isHoliday(date)) {
         if (rowIdx === 0) {
-          return `<td class="grid-holiday-col" rowspan="${numRows}"><span class="grid-holiday-text">定休日</span></td>`;
+          return `<td class="grid-holiday-col" rowspan="${numRows}"><div class="grid-holiday-inner"><span class="grid-holiday-text">定休日</span></div></td>`;
         }
         return ''; // rowspan で埋まっているので省略
       }
