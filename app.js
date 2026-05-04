@@ -1178,7 +1178,8 @@ function renderCustomer() {
     </div>`;
 
   if (isReturning && !f.isEditing) {
-    const prevKarte = state.karte?.entries?.[0];
+    const prevKarte  = state.karte?.entries?.[0];
+    const addressVal = f.address || state.customer.address || '';
     return `
       <p class="section-title">お客様情報</p>
       <p class="section-sub">前回の情報を引き継いでいます。</p>
@@ -1188,7 +1189,16 @@ function renderCustomer() {
           <span class="info-key">お名前</span>
           <span class="info-value">${state.customer.name}</span>
         </div>
-        <button class="edit-toggle" onclick="startEditing()">編集する</button>
+        ${!isVisit() ? `
+        <div class="form-group" style="margin:14px 0 0">
+          <label class="form-label">訪問先住所<span class="required">必須</span></label>
+          <input class="form-input" type="text" id="input-address"
+            value="${addressVal}"
+            placeholder="東京都渋谷区〇〇1-2-3"
+            oninput="state.form.address = this.value">
+          <p class="form-hint">変更がある場合はそのままご修正ください</p>
+        </div>` : ''}
+        <button class="edit-toggle" onclick="startEditing()">お名前を変更する</button>
       </div>
       ${prevKarte ? `
       <div class="karte-prev">
