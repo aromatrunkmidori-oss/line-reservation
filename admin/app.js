@@ -44,6 +44,7 @@ function _defaultReschedule(r) {
     currentDate:      r.date,
     currentStartTime: r.startTime,
     currentEndTime:   r.endTime,
+    step:             'grid',  // 'grid' | 'confirm'
     // グリッド状態
     gridStartDate:    todayStr(),
     gridAvailability: null,
@@ -459,8 +460,10 @@ function showRescheduleForm(reservationId) {
   _loadRsGrid();
 }
 
-// 予約変更グリッド画面を描画
+// 予約変更グリッド画面を描画（step に応じてディスパッチ）
 function renderRescheduleGrid() {
+  if (_reschedule.step === 'confirm') return _renderRsConfirm();
+
   const rs    = _reschedule;
   const today = todayStr();
   const start = rs.gridStartDate || today;
@@ -586,13 +589,11 @@ function renderRescheduleGrid() {
       ${gridHtml}
       <div class="bk-grid-footer" style="margin-top:12px;">
         <button class="bk-btn-secondary" style="width:auto;padding:14px 18px;"
-                onclick="cancelReschedule()">← 戻る</button>
+                onclick="rsGoBack()">← 戻る</button>
         <button class="bk-submit-btn bk-submit-inline" id="rs-confirm-btn"
-                ${canConfirm && !rs.submitting ? '' : 'disabled'}
-                onclick="handleAdminReschedule()">
-          ${rs.submitting ? '変更中...' : canConfirm
-              ? `${formatDateLabel(rs.selectedDate)} ${rs.selectedStartTime}〜${endTime} に変更する`
-              : '日時を選んでください'}
+                ${canConfirm ? '' : 'disabled'}
+                onclick="rsGoToConfirm()">
+          ${canConfirm ? '確認へ →' : '日時を選んでください'}
         </button>
       </div>
     </div>`;
@@ -673,6 +674,73 @@ function rsSelectSlot(date, time) {
   if (btn) {
     btn.disabled = false;
     btn.textContent = `${formatDateLabel(date)} ${time}〜${endTime} に変更する`;
+  }
+}
+
+// グリッドで選択後 → 確認画面へ
+function rsGoToConfirm() {
+  if (!_reschedule.selectedDate || !_reschedule.selectedStartTime) return;
+  _reschedule.step = 'confirm';
+  renderContent();
+}
+
+// 確認画面の描画
+function _renderRsConfirm() {
+  const rs      = _reschedule;
+  const newEnd  = minutesToTimeStr(timeToMin(rs.selectedStartTime) + rs.duration);
+  const badgeCls = rs.serviceType === '来店' ? 'badge-visit' : 'badge-mobile';
+
+  return `
+    <div class="bk-scroll">
+      <div class="rs-header">
+        <div class="rs-current">
+          <span class="rs-current-label">お客様</span>
+          <span class="rs-current-val">${_bkEsc(rs.customerName)}　<span class="service-badge ${badgeCls}">${rs.serviceType}</span></span>
+        </div>
+        <div class="rs-current">
+          <span class="rs-current-label">コース</span>
+          <span class="rs-current-val">${_bkEsc(rs.menuName)}（${rs.duration}分）</span>
+        </div>
+      </div>
+
+      <div class="bk-success-detail">
+        <div class="bk-success-row">
+          <span class="bk-success-label">変更前</span>
+          <span style="color:var(--text-secondary);text-decoration:line-through;">
+            ${formatDateLabel(rs.currentDate)}<br>${rs.currentStartTime}〜${rs.currentEndTime}
+          </span>
+        </div>
+        <div class="bk-success-row">
+          <span class="bk-success-label">変更後</span>
+          <span style="font-weight:600;">
+            ${formatDateLabel(rs.selectedDate)}<br>${rs.selectedStartTime}〜${newEnd}
+          </span>
+        </div>
+      </div>
+
+      <p style="font-size:12px;color:var(--text-secondary);margin:12px 0 0;text-align:center;">
+        変更確定後、お客様にLINE通知が届きます
+      </p>
+
+      <div class="bk-grid-footer" style="margin-top:16px;">
+        <button class="bk-btn-secondary" style="width:auto;padding:14px 18px;"
+                onclick="rsGoBack()">← 戻る</button>
+        <button class="bk-submit-btn bk-submit-inline" id="rs-confirm-btn"
+                ${rs.submitting ? 'disabled' : ''}
+                onclick="handleAdminReschedule()">
+          ${rs.submitting ? '変更中...' : 'この日時に変更する'}
+        </button>
+      </div>
+    </div>`;
+}
+
+// 戻る（確認 → グリッド、グリッド → 予約一覧）
+function rsGoBack() {
+  if (_reschedule.step === 'confirm') {
+    _reschedule.step = 'grid';
+    renderContent();
+  } else {
+    cancelReschedule();
   }
 }
 
