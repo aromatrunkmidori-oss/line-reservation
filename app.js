@@ -102,15 +102,16 @@ function getMobilePrice(duration) {
   return 10000 + ((duration - 60) / 30) * 5000;
 }
 
-// 深夜料金：終了時刻が24:00を超えた分を30分ブロックごとに+¥500
+// 深夜料金：24:00以降にかかるセッション時間を30分ブロックごとに+¥500
 function calcMidnightSurcharge(startTime, duration) {
   if (!startTime || !duration) return 0;
   const [h, m] = startTime.split(':').map(Number);
-  const endMin = h * 60 + m + duration;
-  const midnightMin = 24 * 60;
-  if (endMin <= midnightMin) return 0;
-  const blocks = Math.ceil((endMin - midnightMin) / 30);
-  return blocks * 500;
+  const startMin = h * 60 + m;
+  const endMin   = startMin + duration;
+  if (endMin <= 24 * 60) return 0;
+  // 0時以降に実際にかかるセッション時間だけを課金対象にする
+  const surchargeMin = endMin - Math.max(startMin, 24 * 60);
+  return Math.ceil(surchargeMin / 30) * 500;
 }
 
 // 合計時間・合計料金（来店用）
