@@ -1177,43 +1177,20 @@ function renderCustomer() {
       })()}
     </div>`;
 
-  if (isReturning && !f.isEditing) {
-    const prevKarte  = state.karte?.entries?.[0];
-    const addressVal = f.address || state.customer.address || '';
-    return `
-      <p class="section-title">お客様情報</p>
-      <p class="section-sub">前回の情報を引き継いでいます。</p>
-      ${summary}
-      <div class="info-card">
-        <div class="info-row">
-          <span class="info-key">お名前</span>
-          <span class="info-value">${state.customer.name}</span>
-        </div>
-        ${!isVisit() ? `
-        <div class="form-group" style="margin:14px 0 0">
-          <label class="form-label">訪問先住所<span class="required">必須</span></label>
-          <input class="form-input" type="text" id="input-address"
-            value="${addressVal}"
-            placeholder="東京都渋谷区〇〇1-2-3"
-            oninput="state.form.address = this.value">
-          <p class="form-hint">変更がある場合はそのままご修正ください</p>
-        </div>` : ''}
-        <button class="edit-toggle" onclick="startEditing()">お名前を変更する</button>
-      </div>
-      ${prevKarte ? `
-      <div class="karte-prev">
-        <div class="karte-prev-title">前回の記録（${prevKarte.date}）</div>
-        ${prevKarte.treatmentContent ? `<div class="karte-prev-row"><span class="karte-prev-label">施術：</span>${prevKarte.treatmentContent}</div>` : ''}
-        ${prevKarte.nextNotes ? `<div class="karte-prev-row"><span class="karte-prev-label">申し送り：</span>${prevKarte.nextNotes}</div>` : ''}
-      </div>` : ''}`;
-  }
+  const nameVal    = f.name    || (isReturning ? state.customer?.name    || '' : '');
+  const addressVal = f.address || (isReturning ? state.customer?.address || '' : '');
 
-  const nameVal    = f.name    || (isReturning ? state.customer.name    : '');
-  const addressVal = f.address || (isReturning ? state.customer.address : '');
+  // 前回の来店情報（日付・コースのみ、施術メモは非表示）
+  const prevKarte = state.karte?.entries?.[0];
+  const prevVisitBlock = (isReturning && prevKarte) ? `
+    <div class="karte-prev">
+      <div class="karte-prev-title">前回のご来店（${prevKarte.date}）</div>
+      ${prevKarte.menuName ? `<div class="karte-prev-row"><span class="karte-prev-label">コース：</span>${prevKarte.menuName}</div>` : ''}
+    </div>` : '';
 
   return `
     <p class="section-title">お客様情報</p>
-    <p class="section-sub">ご予約に必要な情報をご入力ください</p>
+    <p class="section-sub">${isReturning ? '前回の情報を引き継いでいます。変更がある場合はご修正ください。' : 'ご予約に必要な情報をご入力ください'}</p>
     ${summary}
     <div style="background:var(--bg-card);border:1px solid var(--border-light);border-radius:var(--radius);padding:18px;margin-bottom:12px;box-shadow:var(--shadow-sm)">
       <div class="form-group">
@@ -1223,14 +1200,14 @@ function renderCustomer() {
           oninput="state.form.name = this.value">
       </div>
       ${f.serviceType === '出張' ? `
-      <div class="form-group" style="margin-bottom:0">
+      <div class="form-group">
         <label class="form-label">訪問先住所<span class="required">必須</span></label>
         <input class="form-input" type="text" id="input-address"
           placeholder="東京都渋谷区〇〇1-2-3" value="${addressVal}"
           oninput="state.form.address = this.value">
-        ${isReturning ? `<p class="form-hint">前回の住所を引き継いでいます。変更がある場合はご修正ください。</p>` : `<p class="form-hint">当日伺う住所をご入力ください</p>`}
+        <p class="form-hint">当日伺う住所をご入力ください</p>
       </div>
-      <div class="form-group" style="margin-bottom:0;margin-top:16px">
+      <div class="form-group" style="margin-bottom:0">
         <label class="form-label">セラピストへの事前メモ<span style="font-size:11px;color:var(--text-secondary);margin-left:6px;font-weight:400">任意</span></label>
         <textarea class="form-input" id="input-note" rows="4"
           placeholder="気になる部位・体の状態・ご要望など、事前に伝えたいことがあればご記入ください。"
@@ -1238,7 +1215,8 @@ function renderCustomer() {
           oninput="state.form.note = this.value">${f.note || ''}</textarea>
         <p class="form-hint">空欄でも予約できます。当日チャットでも相談できます。</p>
       </div>` : ''}
-    </div>`;
+    </div>
+    ${prevVisitBlock}`;
 }
 
 function startEditing() {
@@ -1320,8 +1298,8 @@ function goBack() {
 async function submitReservation() {
   const f           = state.form;
   const isReturning = state.customer?.exists;
-  const nameVal     = f.name    || (isReturning && !f.isEditing ? state.customer?.name    : '');
-  const addressVal  = f.address || (isReturning && !f.isEditing ? state.customer?.address : '');
+  const nameVal    = f.name    || state.customer?.name    || '';
+  const addressVal = f.address || state.customer?.address || '';
 
   if (!nameVal.trim()) {
     showToast('お名前を入力してください');
