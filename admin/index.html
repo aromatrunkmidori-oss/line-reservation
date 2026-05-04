@@ -1036,6 +1036,140 @@
       cursor: default;
       vertical-align: middle;
     }
+
+    /* ── 顧客カルテタブ ── */
+    .ct-list {
+      padding: 12px 16px 80px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .ct-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+      box-shadow: var(--shadow-sm);
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      transition: opacity .15s;
+    }
+    .ct-card:active { opacity: .65; }
+    .ct-card-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 6px;
+    }
+    .ct-name { font-size: 16px; font-weight: 700; color: var(--text-primary); }
+    .ct-visit-count {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--primary);
+      background: var(--primary-pale, #e8f5e9);
+      padding: 2px 8px;
+      border-radius: 10px;
+    }
+    .ct-card-mid {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-bottom: 4px;
+    }
+    .ct-latest-date { font-size: 12px; color: var(--text-secondary); }
+    .ct-latest-menu { font-size: 12px; color: var(--text-secondary); }
+    .ct-card-memo {
+      font-size: 12px;
+      color: var(--text-secondary);
+      background: #F9F9F9;
+      border-radius: 6px;
+      padding: 6px 10px;
+      margin-top: 6px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+    }
+
+    /* 顧客詳細 */
+    .ct-detail { padding: 0 0 80px; }
+    .ct-detail-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border-light);
+      position: sticky;
+      top: 60px;
+      background: var(--bg-card);
+      z-index: 10;
+    }
+    .ct-detail-name { font-size: 17px; font-weight: 700; color: var(--text-primary); }
+    .ct-info-block {
+      padding: 10px 16px;
+      background: var(--bg-card);
+      border-bottom: 1px solid var(--border-light);
+    }
+    .ct-info-row {
+      display: flex;
+      gap: 12px;
+      padding: 5px 0;
+      font-size: 13px;
+    }
+    .ct-info-label { flex: 0 0 36px; color: var(--text-secondary); font-size: 11px; padding-top: 2px; }
+    .ct-history-label {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-secondary);
+      letter-spacing: .5px;
+      text-transform: uppercase;
+      padding: 14px 16px 4px;
+    }
+    .ct-history-list { padding: 0 16px; }
+    .ct-history-item {
+      border-bottom: 1px solid var(--border-light);
+      padding: 14px 0;
+    }
+    .ct-history-item:last-child { border-bottom: none; }
+    .ct-history-item.ct-cancelled { opacity: .55; }
+    .ct-history-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-bottom: 4px;
+    }
+    .ct-history-date { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+    .ct-history-time { font-size: 12px; color: var(--text-secondary); }
+    .ct-history-menu { font-size: 13px; color: var(--text-secondary); margin-bottom: 10px; }
+    .ct-memo-section { display: flex; flex-direction: column; gap: 6px; }
+    .ct-memo-textarea {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-size: 14px;
+      font-family: inherit;
+      color: var(--text-primary);
+      background: var(--bg);
+      resize: vertical;
+      line-height: 1.5;
+    }
+    .ct-memo-textarea:focus { outline: none; border-color: var(--primary); }
+    .ct-save-btn {
+      align-self: flex-end;
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius-sm);
+      padding: 7px 18px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity .15s;
+    }
+    .ct-save-btn:active { opacity: .75; }
+    .ct-no-karte { font-size: 12px; color: var(--text-secondary); margin: 4px 0 0; }
   </style>
 </head>
 <body>

@@ -124,7 +124,7 @@ function _isHoliday(dateStr) {
 
 const state = {
   phase: 'loading',
-  tab: 'reservations',   // 'reservations' | 'grid' | 'booking'
+  tab: 'reservations',   // 'reservations' | 'grid' | 'booking' | 'customers'
   lineUserId: null,
   // 予約タブ
   futureReservations: [],
@@ -133,6 +133,12 @@ const state = {
   gridOriginalOpen: null,  // Set<"date_time"> — 保存済み状態
   gridLoading: false,
   gridSaving: false,
+  // 顧客カルテタブ
+  customerList: [],
+  customerLoading: false,
+  selectedCustomer: null,          // { customer, history }
+  selectedCustomerLoading: false,
+  karteSaving: {},                 // { karteId: 'saving'|'saved'|null }
 };
 
 // ============================================================
@@ -219,7 +225,6 @@ function renderAuthError() {
 // SVG アイコン定義
 // ============================================================
 const ICONS = {
-  // 予約：クリップボードアイコン
   reservation: `<svg class="admin-tab-icon" viewBox="0 0 24 24" fill="none"
       stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
     <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
@@ -227,7 +232,6 @@ const ICONS = {
     <line x1="8" y1="13" x2="16" y2="13"/>
     <line x1="8" y1="17" x2="14" y2="17"/>
   </svg>`,
-  // 予約枠：グリッドテーブルアイコン
   grid: `<svg class="admin-tab-icon" viewBox="0 0 24 24" fill="none"
       stroke="currentColor" stroke-width="2" stroke-linecap="round">
     <rect x="3" y="3" width="18" height="18" rx="2"/>
@@ -235,7 +239,6 @@ const ICONS = {
     <line x1="3" y1="15" x2="21" y2="15"/>
     <line x1="9" y1="3" x2="9" y2="21"/>
   </svg>`,
-  // 代理予約：カレンダー＋プラスアイコン
   booking: `<svg class="admin-tab-icon" viewBox="0 0 24 24" fill="none"
       stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
     <rect x="3" y="4" width="18" height="18" rx="2"/>
@@ -244,6 +247,13 @@ const ICONS = {
     <line x1="3" y1="10" x2="21" y2="10"/>
     <line x1="12" y1="14" x2="12" y2="18"/>
     <line x1="10" y1="16" x2="14" y2="16"/>
+  </svg>`,
+  customers: `<svg class="admin-tab-icon" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/>
+    <circle cx="9" cy="7" r="4"/>
+    <path d="M23 21v-2a4 4 0 00-3-3.87"/>
+    <path d="M16 3.13a4 4 0 010 7.75"/>
   </svg>`,
 };
 
@@ -271,6 +281,10 @@ function renderMain() {
               onclick="switchTab('booking')">
         ${ICONS.booking}代理予約
       </button>
+      <button class="admin-tab-btn ${state.tab === 'customers' ? 'active' : ''}"
+              onclick="switchTab('customers')">
+        ${ICONS.customers}顧客
+      </button>
     </nav>`;
   renderContent();
 }
@@ -281,16 +295,19 @@ function renderContent() {
   if      (_reschedule)                  el.innerHTML = renderRescheduleGrid();
   else if (state.tab === 'reservations') el.innerHTML = renderReservationsTab();
   else if (state.tab === 'grid')         el.innerHTML = renderGridTab();
+  else if (state.tab === 'customers')    el.innerHTML = renderCustomersTab();
   else                                   el.innerHTML = renderBookingTab();
 }
 
 function switchTab(tab) {
   state.tab = tab;
+  state.selectedCustomer = null;
   renderMain();
-  if (tab === 'grid' && !state.gridData) loadGridData();
-  else if (tab === 'grid') renderContent();
+  if      (tab === 'grid' && !state.gridData) loadGridData();
+  else if (tab === 'grid')         renderContent();
   else if (tab === 'reservations') loadFutureReservations();
-  else if (tab === 'booking') loadBookingMenus();
+  else if (tab === 'booking')      loadBookingMenus();
+  else if (tab === 'customers')    loadCustomerList();
 }
 
 // ============================================================
@@ -1126,6 +1143,172 @@ async function handleSaveGrid() {
 
   state.gridSaving = false;
   renderContent();
+}
+
+// ============================================================
+// 顧客カルテタブ
+// ============================================================
+
+async function loadCustomerList() {
+  if (state.customerLoading) return;
+  state.customerLoading = true;
+  renderContent();
+  try {
+    const result = await apiGet({ action: 'getCustomerList' });
+    state.customerList = result.customers || [];
+  } catch(e) {
+    state.customerList = [];
+  }
+  state.customerLoading = false;
+  renderContent();
+}
+
+async function openCustomerDetail(lineUserId) {
+  state.selectedCustomer         = null;
+  state.selectedCustomerLoading  = true;
+  state.karteSaving              = {};
+  renderContent();
+  try {
+    const result = await apiGet({ action: 'getCustomerDetail', lineUserId });
+    state.selectedCustomer = result;
+  } catch(e) {
+    showToast('顧客情報の取得に失敗しました', true);
+  }
+  state.selectedCustomerLoading = false;
+  renderContent();
+}
+
+function closeCustomerDetail() {
+  state.selectedCustomer        = null;
+  state.selectedCustomerLoading = false;
+  state.karteSaving             = {};
+  renderContent();
+}
+
+async function saveKarteMemo(karteId) {
+  const el = document.getElementById('memo-' + karteId);
+  if (!el) return;
+  const memo = el.value;
+
+  state.karteSaving = Object.assign({}, state.karteSaving, { [karteId]: 'saving' });
+  _updateMemoBtn(karteId, '保存中...');
+
+  try {
+    const result = await apiPost({ action: 'saveKarte', karteId, treatmentContent: memo });
+    if (result.error) throw new Error(result.error);
+    state.karteSaving = Object.assign({}, state.karteSaving, { [karteId]: 'saved' });
+    _updateMemoBtn(karteId, '保存済み ✓');
+    // 顧客一覧の最新メモも更新（バックグラウンド）
+    if (state.customerList.length > 0) loadCustomerList();
+    setTimeout(() => {
+      state.karteSaving = Object.assign({}, state.karteSaving, { [karteId]: null });
+      _updateMemoBtn(karteId, '保存する');
+    }, 2000);
+  } catch(e) {
+    state.karteSaving = Object.assign({}, state.karteSaving, { [karteId]: null });
+    _updateMemoBtn(karteId, '保存する');
+    showToast('保存に失敗しました: ' + e.message, true);
+  }
+}
+
+function _updateMemoBtn(karteId, text) {
+  const btn = document.getElementById('memo-btn-' + karteId);
+  if (btn) btn.textContent = text;
+}
+
+// ── 顧客一覧レンダリング ──
+function renderCustomersTab() {
+  if (state.selectedCustomerLoading) {
+    return `<div style="display:flex;flex-direction:column;align-items:center;padding:64px 0;gap:16px;">
+      <div class="spinner"></div>
+      <span style="font-size:13px;color:var(--text-secondary);">顧客情報を読み込み中...</span>
+    </div>`;
+  }
+
+  if (state.selectedCustomer) return _renderCustomerDetail();
+
+  if (state.customerLoading) {
+    return `<div style="display:flex;flex-direction:column;align-items:center;padding:64px 0;gap:16px;">
+      <div class="spinner"></div>
+      <span style="font-size:13px;color:var(--text-secondary);">読み込み中...</span>
+    </div>`;
+  }
+
+  if (state.customerList.length === 0) {
+    return `<div class="empty-state">まだ顧客データがありません</div>`;
+  }
+
+  const cards = state.customerList.map(c => {
+    const badge   = c.latestServiceType === '来店' ? 'badge-visit' : 'badge-mobile';
+    const memoSnip = c.latestMemo
+      ? `<div class="ct-card-memo">${_bkEsc(c.latestMemo.slice(0, 40))}${c.latestMemo.length > 40 ? '…' : ''}</div>`
+      : '';
+    return `
+      <div class="ct-card" onclick="openCustomerDetail('${_bkEsc(c.lineUserId)}')">
+        <div class="ct-card-top">
+          <span class="ct-name">${_bkEsc(c.name)}</span>
+          <span class="ct-visit-count">${c.visitCount}回</span>
+        </div>
+        <div class="ct-card-mid">
+          <span class="service-badge ${badge}">${c.latestServiceType}</span>
+          <span class="ct-latest-date">${formatDateLabel(c.latestDate)}</span>
+          <span class="ct-latest-menu">${_bkEsc(c.latestMenu)}（${c.latestDuration}分）</span>
+        </div>
+        ${memoSnip}
+      </div>`;
+  }).join('');
+
+  return `<div class="ct-list">${cards}</div>`;
+}
+
+// ── 顧客詳細レンダリング ──
+function _renderCustomerDetail() {
+  const { customer, history } = state.selectedCustomer;
+  const c = customer || {};
+
+  const infoRows = [
+    c.phone   ? `<div class="ct-info-row"><span class="ct-info-label">電話</span><span>${_bkEsc(c.phone)}</span></div>` : '',
+    c.address ? `<div class="ct-info-row"><span class="ct-info-label">住所</span><span>${_bkEsc(c.address)}</span></div>` : '',
+    c.firstVisitDate ? `<div class="ct-info-row"><span class="ct-info-label">初回</span><span>${formatDateLabel(c.firstVisitDate)}</span></div>` : '',
+  ].filter(Boolean).join('');
+
+  const items = (history || []).map(r => {
+    const isCancelled = r.status === 'cancelled';
+    const badgeCls    = r.serviceType === '来店' ? 'badge-visit' : 'badge-mobile';
+    const saving      = state.karteSaving[r.karteId];
+    const btnText     = saving === 'saving' ? '保存中...' : saving === 'saved' ? '保存済み ✓' : '保存する';
+    const memoSection = r.karteId ? `
+      <div class="ct-memo-section">
+        <textarea class="ct-memo-textarea" id="memo-${_bkEsc(r.karteId)}"
+                  placeholder="施術メモを入力..."
+                  rows="3">${_bkEsc(r.memo)}</textarea>
+        <button class="ct-save-btn" id="memo-btn-${_bkEsc(r.karteId)}"
+                onclick="saveKarteMemo('${_bkEsc(r.karteId)}')">${btnText}</button>
+      </div>` : `<p class="ct-no-karte">カルテ未作成</p>`;
+
+    return `
+      <div class="ct-history-item${isCancelled ? ' ct-cancelled' : ''}">
+        <div class="ct-history-header">
+          <span class="ct-history-date">${formatDateLabel(r.date)}</span>
+          <span class="ct-history-time">${r.startTime}〜${r.endTime}</span>
+          <span class="service-badge ${badgeCls}">${r.serviceType}</span>
+          ${isCancelled ? '<span class="badge-cancelled">キャンセル済</span>' : ''}
+        </div>
+        <div class="ct-history-menu">${_bkEsc(r.menuName)}（${r.duration}分）</div>
+        ${memoSection}
+      </div>`;
+  }).join('');
+
+  return `
+    <div class="ct-detail">
+      <div class="ct-detail-header">
+        <button class="btn-back-reschedule" onclick="closeCustomerDetail()">← 一覧に戻る</button>
+        <span class="ct-detail-name">${_bkEsc(c.name || '')}</span>
+      </div>
+      ${infoRows ? `<div class="ct-info-block">${infoRows}</div>` : ''}
+      <div class="ct-history-label">施術履歴（${(history||[]).length}件）</div>
+      <div class="ct-history-list">${items || '<div class="empty-state">履歴がありません</div>'}</div>
+    </div>`;
 }
 
 // ============================================================
