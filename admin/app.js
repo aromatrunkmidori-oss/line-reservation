@@ -180,14 +180,21 @@ async function apiGet(params) {
   const url = new URL(ADMIN_CONFIG.GAS_URL);
   Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
   const res = await fetch(url.toString());
-  return res.json();
+  if (!res.ok) throw new Error('通信エラー (HTTP ' + res.status + ')');
+  const data = await res.json();
+  if (data.error) throw new Error(data.error);
+  return data;
 }
 async function apiPost(body) {
   const res = await fetch(ADMIN_CONFIG.GAS_URL, {
-    method: 'POST',
-    body: JSON.stringify(body),
+    method:  'POST',
+    headers: { 'Content-Type': 'text/plain' },
+    body:    JSON.stringify(body),
   });
-  return res.json();
+  if (!res.ok) throw new Error('通信エラー (HTTP ' + res.status + ')');
+  const data = await res.json();
+  if (data.error) throw new Error(data.error);
+  return data;
 }
 
 // ============================================================

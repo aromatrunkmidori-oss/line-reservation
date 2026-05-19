@@ -529,7 +529,12 @@ function renderVisitConfirm() {
 // STEP 6（出張）：確認ページ（深夜料金反映）
 // ============================================================
 function renderMobileConfirm() {
-  const f         = state.form;
+  const f = state.form;
+  if (!f.timeSlot || !f.duration) {
+    state.step = 'datetime';
+    render();
+    return '';
+  }
   const basePrice = getMobilePrice(f.duration);
   const surcharge = calcMidnightSurcharge(f.timeSlot, f.duration);
   const total     = basePrice + surcharge;
