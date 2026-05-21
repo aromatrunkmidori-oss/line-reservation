@@ -23,7 +23,7 @@ function timeToMin(t) {
 // グリッドに表示する時間帯：10:00〜26:00（30分刻み）
 const GRID_TIMES = (() => {
   const times = [];
-  for (let m = 10 * 60; m < 26 * 60; m += 30) times.push(minutesToTimeStr(m));
+  for (let m = 10 * 60; m < 28 * 60; m += 30) times.push(minutesToTimeStr(m));
   return times;
 })();
 

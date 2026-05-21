@@ -671,7 +671,7 @@ function selectDuration(el, min) {
 // 10:00〜26:00 の30分刻み（日付跨ぎ予約に対応）
 const CUST_GRID_TIMES = (() => {
   const t = [];
-  for (let m = 10 * 60; m < 26 * 60; m += 30)
+  for (let m = 10 * 60; m < 28 * 60; m += 30)
     t.push(`${String(Math.floor(m/60)).padStart(2,'0')}:${String(m%60).padStart(2,'0')}`);
   return t;
 })();
