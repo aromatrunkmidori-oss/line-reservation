@@ -320,12 +320,29 @@ function switchTab(tab) {
   else if (tab === 'customers')    loadCustomerList();
 }
 
+function refreshCurrentTab() {
+  if (state.tab === 'reservations') {
+    loadFutureReservations();
+  } else if (state.tab === 'grid') {
+    state.gridData          = null;
+    state.visitBlockSet     = null;
+    state.gridOriginalOpen  = null;
+    state.gridOriginalBlock = null;
+    loadGridData();
+  } else if (state.tab === 'customers') {
+    state.selectedCustomer = null;
+    state.customerLoading  = false;
+    loadCustomerList();
+  }
+}
+
 // ============================================================
 // 予約タブ
 // ============================================================
 function renderReservationsTab() {
+  const header = `<div class="tab-header"><span class="tab-header-title">予約</span><button class="refresh-btn" onclick="refreshCurrentTab()">↻ 更新</button></div>`;
   if (state.futureReservations.length === 0) {
-    return `<div class="empty-state">今後の予約はありません</div>`;
+    return header + `<div class="empty-state">今後の予約はありません</div>`;
   }
 
   // 日付ごとにグループ化
@@ -359,7 +376,7 @@ function renderReservationsTab() {
       ${cards}`;
   }).join('');
 
-  return `<div class="reservation-list">${sections}</div>`;
+  return header + `<div class="reservation-list">${sections}</div>`;
 }
 
 // ============================================================
@@ -886,11 +903,14 @@ function renderGridTab() {
             ? `<span style="color:var(--primary);font-weight:600;">${changeCount}日分の変更あり</span>`
             : hintText}
         </span>
-        <button class="grid-save-btn ${hasDirty ? '' : 'hidden'}" id="grid-save-btn"
-                onclick="handleSaveGrid()"
-                ${state.gridSaving ? 'disabled' : ''}>
-          ${state.gridSaving ? '保存中...' : '保存する'}
-        </button>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button class="refresh-btn" onclick="refreshCurrentTab()">↻ 更新</button>
+          <button class="grid-save-btn ${hasDirty ? '' : 'hidden'}" id="grid-save-btn"
+                  onclick="handleSaveGrid()"
+                  ${state.gridSaving ? 'disabled' : ''}>
+            ${state.gridSaving ? '保存中...' : '保存する'}
+          </button>
+        </div>
       </div>
       <div class="grid-scroll" id="grid-scroll">
         <table class="grid-table">
@@ -1313,8 +1333,10 @@ function renderCustomersTab() {
     </div>`;
   }
 
+  const custHeader = `<div class="tab-header"><span class="tab-header-title">顧客</span><button class="refresh-btn" onclick="refreshCurrentTab()">↻ 更新</button></div>`;
+
   if (state.customerList.length === 0) {
-    return `<div class="empty-state">まだ顧客データがありません</div>`;
+    return custHeader + `<div class="empty-state">まだ顧客データがありません</div>`;
   }
 
   const cards = state.customerList.map(c => {
@@ -1337,7 +1359,7 @@ function renderCustomersTab() {
       </div>`;
   }).join('');
 
-  return `<div class="ct-list">${cards}</div>`;
+  return custHeader + `<div class="ct-list">${cards}</div>`;
 }
 
 // ── 顧客詳細レンダリング ──

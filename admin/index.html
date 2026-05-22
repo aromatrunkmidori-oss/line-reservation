@@ -103,6 +103,12 @@
     .badge-visit  { background: #E8F5E9; color: #2E7D32; }
     .badge-mobile { background: #FFF3E0; color: #E65100; }
     .badge-web    { background: #E3F2FD; color: #1565C0; }
+    /* タブヘッダー（タイトル + 更新ボタン） */
+    .tab-header { display:flex; align-items:center; justify-content:space-between; padding:12px 4px 6px; }
+    .tab-header-title { font-size:15px; font-weight:700; color:var(--text-primary); }
+    /* 更新ボタン */
+    .refresh-btn { padding:5px 12px; border:1.5px solid var(--border); border-radius:20px; background:var(--bg-card); font-size:12px; font-weight:600; color:var(--text-secondary); cursor:pointer; white-space:nowrap; }
+    .refresh-btn:active { background:var(--border); }
     /* 来店/出張 切り替えトグル */
     .grid-type-toggle { display:flex; gap:6px; padding:8px 12px 0; }
     .type-btn { padding:6px 18px; border:1.5px solid var(--border); border-radius:20px; background:var(--bg-card); font-size:13px; font-weight:600; cursor:pointer; color:var(--text-secondary); }
