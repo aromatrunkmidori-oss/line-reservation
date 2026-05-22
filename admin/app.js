@@ -129,8 +129,11 @@ const state = {
   // 予約タブ
   futureReservations: [],
   // グリッドタブ
-  gridData: null,          // { openSet, resMap, calMap, intervalSet }
-  gridOriginalOpen: null,  // Set<"date_time"> — 保存済み状態
+  gridData: null,           // { openSet, resMap, calMap, intervalSet }
+  gridOriginalOpen: null,   // Set<"date_time"> — 出張保存済み状態
+  visitBlockSet: null,      // Set<"date_time"> — 来店ブロック
+  gridOriginalBlock: null,  // Set<"date_time"> — 来店ブロック保存済み状態
+  gridServiceType: '出張',  // '来店' | '出張'
   gridLoading: false,
   gridSaving: false,
   // 顧客カルテタブ
@@ -866,13 +869,22 @@ function renderGridTab() {
     return `<tr><td class="grid-time-td">${time}</td>${cells}</tr>`;
   }).join('');
 
+  const isVisitMode = state.gridServiceType === '来店';
+  const hintText = isVisitMode
+    ? 'タップで○/×を切り替え（×=ブロック）、保存で反映'
+    : 'タップで○/✕を切り替え、保存で反映';
+
   return `
     <div class="grid-container">
+      <div class="grid-type-toggle">
+        <button class="type-btn ${isVisitMode ? 'active' : ''}" onclick="setGridServiceType('来店')">来店</button>
+        <button class="type-btn ${!isVisitMode ? 'active' : ''}" onclick="setGridServiceType('出張')">出張</button>
+      </div>
       <div class="grid-toolbar">
         <span class="grid-toolbar-note" id="grid-toolbar-note">
           ${hasDirty
             ? `<span style="color:var(--primary);font-weight:600;">${changeCount}日分の変更あり</span>`
-            : 'タップで○/✕を切り替え、保存で反映'}
+            : hintText}
         </span>
         <button class="grid-save-btn ${hasDirty ? '' : 'hidden'}" id="grid-save-btn"
                 onclick="handleSaveGrid()"
@@ -898,13 +910,27 @@ function renderGridTab() {
 // グリッドのデータ操作
 // ============================================================
 
+function setGridServiceType(type) {
+  if (state.gridServiceType === type) return;
+  state.gridServiceType = type;
+  renderContent();
+}
+
 // セルをローカルでトグル（スクロール位置を保持するため外科的DOM更新）
 function localToggleGridCell(date, time) {
   const key = `${date}_${time}`;
-  if (state.gridData.openSet.has(key)) {
-    state.gridData.openSet.delete(key);
+  if (state.gridServiceType === '来店') {
+    if (state.visitBlockSet.has(key)) {
+      state.visitBlockSet.delete(key); // ブロック解除 → ○
+    } else {
+      state.visitBlockSet.add(key);    // ブロック → ×
+    }
   } else {
-    state.gridData.openSet.add(key);
+    if (state.gridData.openSet.has(key)) {
+      state.gridData.openSet.delete(key);
+    } else {
+      state.gridData.openSet.add(key);
+    }
   }
   updateGridCell(date, time);
   updateGridToolbar();
@@ -928,11 +954,20 @@ function updateGridCell(date, time) {
 // 優先順位: 予約 > pending変更 > カレンダー予定 > インターバル > open/closed
 // ============================================================
 function _buildCell(key, date, time, { resMap, openSet, calMap, intervalSet, today }) {
-  const res      = resMap.get(key);
-  const cal      = calMap ? calMap.get(key) : null;
-  const inInterval = intervalSet ? intervalSet.has(key) : false;
-  const isOpen   = openSet.has(key);
-  const wasOpen  = state.gridOriginalOpen ? state.gridOriginalOpen.has(key) : isOpen;
+  const isVisitMode = state.gridServiceType === '来店';
+  const res         = resMap.get(key);
+  const cal         = calMap ? calMap.get(key) : null;
+  const inInterval  = intervalSet ? intervalSet.has(key) : false;
+
+  let isOpen, wasOpen;
+  if (isVisitMode) {
+    const bs = state.visitBlockSet || new Set();
+    isOpen  = !bs.has(key); // 来店: ブロックされていない = open
+    wasOpen = state.gridOriginalBlock ? !state.gridOriginalBlock.has(key) : isOpen;
+  } else {
+    isOpen  = openSet.has(key);
+    wasOpen = state.gridOriginalOpen ? state.gridOriginalOpen.has(key) : isOpen;
+  }
   const modified = isOpen !== wasOpen;
 
   let cls     = 'grid-cell';
@@ -976,6 +1011,10 @@ function _buildCell(key, date, time, { resMap, openSet, calMap, intervalSet, tod
     content = '○';
     onclick = `onclick="localToggleGridCell('${date}','${time}')"`;
 
+  } else if (isVisitMode) {
+    cls    += ' visit-blocked';
+    content = '×';
+    onclick = `onclick="localToggleGridCell('${date}','${time}')"`;
   } else {
     cls    += ' closed';
     content = '−';
@@ -1005,17 +1044,27 @@ function updateGridToolbar() {
   }
 }
 
-// 変更があった日付とその開放時間リストを取得
+// 変更があった日付とその時間リストを取得
 function getGridChanges() {
   const changes = {};
   const dates   = getGridDates();
-  dates.forEach(date => {
-    const origTimes = GRID_TIMES.filter(t => state.gridOriginalOpen.has(`${date}_${t}`));
-    const currTimes = GRID_TIMES.filter(t => state.gridData.openSet.has(`${date}_${t}`));
-    if (JSON.stringify(origTimes) !== JSON.stringify(currTimes)) {
-      changes[date] = currTimes;
-    }
-  });
+  if (state.gridServiceType === '来店') {
+    dates.forEach(date => {
+      const origBlocks = GRID_TIMES.filter(t => state.gridOriginalBlock.has(`${date}_${t}`));
+      const currBlocks = GRID_TIMES.filter(t => state.visitBlockSet.has(`${date}_${t}`));
+      if (JSON.stringify(origBlocks) !== JSON.stringify(currBlocks)) {
+        changes[date] = currBlocks;
+      }
+    });
+  } else {
+    dates.forEach(date => {
+      const origTimes = GRID_TIMES.filter(t => state.gridOriginalOpen.has(`${date}_${t}`));
+      const currTimes = GRID_TIMES.filter(t => state.gridData.openSet.has(`${date}_${t}`));
+      if (JSON.stringify(origTimes) !== JSON.stringify(currTimes)) {
+        changes[date] = currTimes;
+      }
+    });
+  }
   return changes;
 }
 
@@ -1113,8 +1162,21 @@ async function loadGridData() {
       }
     });
 
-    state.gridData         = { openSet, resMap, calMap, intervalSet };
-    state.gridOriginalOpen = new Set(openSet); // スナップショット保存
+    // 来店ブロックセットを構築
+    const visitBlockSet = new Set();
+    (result.visitBlocks || []).forEach(block => {
+      const start = timeToMin(block.startTime);
+      const end   = timeToMin(block.endTime);
+      for (let m = start; m < end; m += 30) {
+        const t = minutesToTimeStr(m);
+        if (GRID_TIMES.includes(t)) visitBlockSet.add(`${block.date}_${t}`);
+      }
+    });
+
+    state.gridData          = { openSet, resMap, calMap, intervalSet };
+    state.gridOriginalOpen  = new Set(openSet);
+    state.visitBlockSet     = visitBlockSet;
+    state.gridOriginalBlock = new Set(visitBlockSet);
     if (Array.isArray(result.holidays)) _holidays = result.holidays;
 
   } catch(err) {
@@ -1142,11 +1204,18 @@ async function handleSaveGrid() {
   renderContent();
 
   try {
-    const result = await apiPost({ action: 'saveGridSlots', changes });
+    const result = await apiPost({
+      action:      'saveGridSlots',
+      changes,
+      serviceType: state.gridServiceType,
+    });
     if (result.error) throw new Error(result.error);
     showToast('保存しました');
-    // 保存済み状態を更新
-    state.gridOriginalOpen = new Set(state.gridData.openSet);
+    if (state.gridServiceType === '来店') {
+      state.gridOriginalBlock = new Set(state.visitBlockSet);
+    } else {
+      state.gridOriginalOpen = new Set(state.gridData.openSet);
+    }
   } catch(err) {
     showToast('保存に失敗しました: ' + err.message, true);
   }

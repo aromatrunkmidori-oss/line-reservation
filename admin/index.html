@@ -103,6 +103,12 @@
     .badge-visit  { background: #E8F5E9; color: #2E7D32; }
     .badge-mobile { background: #FFF3E0; color: #E65100; }
     .badge-web    { background: #E3F2FD; color: #1565C0; }
+    /* 来店/出張 切り替えトグル */
+    .grid-type-toggle { display:flex; gap:6px; padding:8px 12px 0; }
+    .type-btn { padding:6px 18px; border:1.5px solid var(--border); border-radius:20px; background:var(--bg-card); font-size:13px; font-weight:600; cursor:pointer; color:var(--text-secondary); }
+    .type-btn.active { background:var(--primary); border-color:var(--primary); color:#fff; }
+    /* 来店ブロックセル */
+    .grid-cell.visit-blocked { background:#FFEBEE; color:#C62828; cursor:pointer; font-size:13px; font-weight:700; }
     .reservation-name { font-size: 15px; font-weight: 600; }
     .reservation-menu { font-size: 13px; color: var(--text-secondary); margin-top: 2px; }
 
