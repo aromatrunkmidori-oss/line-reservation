@@ -856,32 +856,26 @@ function renderGridTab() {
     const m   = d.getMonth() + 1;
     const day = d.getDate();
     const wk  = ['日', '月', '火', '水', '木', '金', '土'][dow];
-    if (_isHoliday(date)) {
-      return `<th class="grid-date-th grid-holiday-th" id="col-${date}">${m}/${day}<br><span style="font-weight:400;font-size:10px;">${wk}</span></th>`;
-    }
+    const isHol = _isHoliday(date);
     let cls = 'grid-date-th';
-    if (date === today)  cls += ' today-col';
-    else if (dow === 0)  cls += ' sun';
-    else if (dow === 6)  cls += ' sat';
+    if (isHol)          cls += ' grid-holiday-th';
+    else if (date === today) cls += ' today-col';
+    else if (dow === 0)      cls += ' sun';
+    else if (dow === 6)      cls += ' sat';
     const allOpen  = _isDayAllOpen(date);
     const bulkLabel = allOpen ? '全×' : '全○';
     const bulkTitle = allOpen ? '全クローズ' : '全開放';
     const bulkBtn  = `<button class="grid-bulk-btn${allOpen ? ' all-open' : ''}" id="bulk-btn-${date}" onclick="bulkToggleDay('${date}')" title="${bulkTitle}">${bulkLabel}</button>`;
-    return `<th class="${cls}" id="col-${date}">${m}/${day}<br><span style="font-weight:400;font-size:10px;">${wk}</span>${bulkBtn}</th>`;
+    const holidayBadge = isHol ? `<span style="display:block;font-size:8px;color:#C62828;font-weight:400;">定休</span>` : '';
+    return `<th class="${cls}" id="col-${date}">${m}/${day}<br><span style="font-weight:400;font-size:10px;">${wk}</span>${holidayBadge}${bulkBtn}</th>`;
   }).join('');
 
   const { calMap, intervalSet } = state.gridData;
   const numRows = GRID_TIMES.length;
 
   // ボディ行
-  const bodyRows = GRID_TIMES.map((time, rowIdx) => {
+  const bodyRows = GRID_TIMES.map((time) => {
     const cells = dates.map(date => {
-      if (_isHoliday(date)) {
-        if (rowIdx === 0) {
-          return `<td class="grid-holiday-col" rowspan="${numRows}"><div class="grid-holiday-inner"><span class="grid-holiday-text">定休日</span></div></td>`;
-        }
-        return ''; // rowspan で埋まっているので省略
-      }
       const key = `${date}_${time}`;
       const [cls, content, onclick] = _buildCell(key, date, time, { resMap, openSet, calMap, intervalSet, today });
       return `<td class="${cls}" id="cell-${key}" ${onclick}>${content}</td>`;
@@ -1040,7 +1034,8 @@ function _buildCell(key, date, time, { resMap, openSet, calMap, intervalSet, tod
   let content = '';
   let onclick = '';
 
-  if (date === today) cls += ' today-col';
+  if (date === today)   cls += ' today-col';
+  if (_isHoliday(date)) cls += ' holiday-col';
 
   if (res) {
     // ── 施術予約あり（タップで詳細・変更不可）
