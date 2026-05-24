@@ -1150,13 +1150,22 @@ async function loadGridData() {
     const calIntervalMin = result.calendarIntervalMobile || 90;
     const intervalSet    = new Set();
 
-    // a) 予約後バッファ
+    // a) 予約終了後バッファ・開始前バッファ（施術終了後60/90分は双方向で受付不可）
     result.reservations.forEach(res => {
-      const endMin    = timeToMin(res.endTime);
-      const bufferEnd = endMin + intervalMin;
-      for (let m = endMin; m < bufferEnd; m += 30) {
+      const startMin = timeToMin(res.startTime);
+      const endMin   = timeToMin(res.endTime);
+      // 終了後バッファ
+      for (let m = endMin; m < endMin + intervalMin; m += 30) {
         const t = minutesToTimeStr(m);
         if (GRID_TIMES.includes(t)) intervalSet.add(`${res.date}_${t}`);
+      }
+      // 開始前バッファ（予約ブロック自体は resMap が担当するので除く）
+      for (let m = startMin - intervalMin; m < startMin; m += 30) {
+        if (m < 0) continue;
+        const t = minutesToTimeStr(m);
+        if (GRID_TIMES.includes(t) && !resMap.has(`${res.date}_${t}`)) {
+          intervalSet.add(`${res.date}_${t}`);
+        }
       }
     });
 
@@ -2037,10 +2046,20 @@ function _parseBkGridDetail(result) {
   const intervalSet    = new Set();
 
   (result.reservations || []).forEach(res => {
-    const endMin = timeToMin(res.endTime);
+    const startMin = timeToMin(res.startTime);
+    const endMin   = timeToMin(res.endTime);
+    // 終了後バッファ
     for (let m = endMin; m < endMin + intervalMin; m += 30) {
       const t = minutesToTimeStr(m);
       if (GRID_TIMES.includes(t)) intervalSet.add(`${res.date}_${t}`);
+    }
+    // 開始前バッファ（予約ブロック自体は resMap が担当するので除く）
+    for (let m = startMin - intervalMin; m < startMin; m += 30) {
+      if (m < 0) continue;
+      const t = minutesToTimeStr(m);
+      if (GRID_TIMES.includes(t) && !resMap.has(`${res.date}_${t}`)) {
+        intervalSet.add(`${res.date}_${t}`);
+      }
     }
   });
   (result.calendarEvents || []).forEach(ev => {
