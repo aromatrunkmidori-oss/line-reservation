@@ -1146,14 +1146,16 @@ async function loadGridData() {
     // ④ インターバル不可ブロックを計算
     //   a) 予約終了後のバッファ（予約間インターバル）
     //   b) カレンダー予定の前後バッファ（calendarIntervalMobile）
-    const intervalMin    = result.intervalMinutes        || 15;
-    const calIntervalMin = result.calendarIntervalMobile || 90;
-    const intervalSet    = new Set();
+    const intervalMinVisit   = result.intervalMinutesVisit  || 60;
+    const intervalMinMobile  = result.intervalMinutesMobile || 90;
+    const calIntervalMin     = result.calendarIntervalMobile || 90;
+    const intervalSet        = new Set();
 
-    // a) 予約終了後バッファ・開始前バッファ（施術終了後60/90分は双方向で受付不可）
+    // a) 予約終了後バッファ・開始前バッファ（serviceTypeごとに来店60分・出張90分を適用）
     result.reservations.forEach(res => {
-      const startMin = timeToMin(res.startTime);
-      const endMin   = timeToMin(res.endTime);
+      const intervalMin  = res.serviceType === '来店' ? intervalMinVisit : intervalMinMobile;
+      const startMin     = timeToMin(res.startTime);
+      const endMin       = timeToMin(res.endTime);
       // 終了後バッファ（終了が30分境界でない場合も次の境界から正しくカバー）
       const postBufStart = Math.ceil(endMin / 30) * 30;
       for (let m = postBufStart; m < endMin + intervalMin; m += 30) {
@@ -2042,13 +2044,15 @@ function _parseBkGridDetail(result) {
     }
   });
 
-  const intervalMin    = result.intervalMinutes        || 15;
-  const calIntervalMin = result.calendarIntervalMobile || 90;
-  const intervalSet    = new Set();
+  const intervalMinVisit   = result.intervalMinutesVisit  || 60;
+  const intervalMinMobile  = result.intervalMinutesMobile || 90;
+  const calIntervalMin     = result.calendarIntervalMobile || 90;
+  const intervalSet        = new Set();
 
   (result.reservations || []).forEach(res => {
-    const startMin = timeToMin(res.startTime);
-    const endMin   = timeToMin(res.endTime);
+    const intervalMin  = res.serviceType === '来店' ? intervalMinVisit : intervalMinMobile;
+    const startMin     = timeToMin(res.startTime);
+    const endMin       = timeToMin(res.endTime);
     // 終了後バッファ（終了が30分境界でない場合も次の境界から正しくカバー）
     const postBufStart = Math.ceil(endMin / 30) * 30;
     for (let m = postBufStart; m < endMin + intervalMin; m += 30) {
