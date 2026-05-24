@@ -114,6 +114,8 @@ let _bkForm = _defaultBkForm();
 // ============================================================
 // 定休日リスト（getGridData / getSettings から取得後にセット）
 let _holidays = [];
+// 定休日例外解放リスト
+let _holidayOverrides = [];
 
 // 日付文字列が定休日かどうかを判定
 function _isHoliday(dateStr) {
@@ -1250,7 +1252,8 @@ async function loadGridData() {
     state.gridOriginalOpen  = new Set(openSet);
     state.visitBlockSet     = visitBlockSet;
     state.gridOriginalBlock = new Set(visitBlockSet);
-    if (Array.isArray(result.holidays)) _holidays = result.holidays;
+    if (Array.isArray(result.holidays))         _holidays         = result.holidays;
+    if (Array.isArray(result.holidayOverrides)) _holidayOverrides = result.holidayOverrides;
 
   } catch(err) {
     state.gridData = null;

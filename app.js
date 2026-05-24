@@ -189,7 +189,8 @@ function shortDuration(min) {
   const m = min % 60;
   return m > 0 ? `${h}時間${m}分` : `${h}時間`;
 }
-function isHoliday(dateStr, date, holidays) {
+function isHoliday(dateStr, date, holidays, holidayOverrides) {
+  if ((holidayOverrides || []).includes(dateStr)) return false;
   const dayNames = ['日曜日','月曜日','火曜日','水曜日','木曜日','金曜日','土曜日'];
   return holidays.includes(dayNames[date.getDay()]) || holidays.includes(dateStr);
 }
@@ -804,7 +805,8 @@ function renderDateTimeGrid() {
     visibleTimes = CUST_GRID_TIMES;
   }
 
-  const holidays = state.settings?.holidays || [];
+  const holidays         = state.settings?.holidays || [];
+  const holidayOverrides = state.settings?.holidayOverrides || [];
 
   // ── ヘッダー行 ──
   const headerCells = dates.map(date => {
@@ -813,7 +815,7 @@ function renderDateTimeGrid() {
     const wk  = ['日','月','火','水','木','金','土'][dow];
     const m   = d.getMonth() + 1;
     const day = d.getDate();
-    if (isHoliday(date, d, holidays)) {
+    if (isHoliday(date, d, holidays, holidayOverrides)) {
       return `<th class="cg-th cg-holiday">${m}/${day}<br><span class="cg-dow">${wk}</span></th>`;
     }
     let cls   = 'cg-th';
@@ -833,7 +835,7 @@ function renderDateTimeGrid() {
   const bodyRows = visibleTimes.map((time, rowIdx) => {
     const cells = dates.map(date => {
       const d = new Date(date + 'T00:00:00+09:00');
-      if (isHoliday(date, d, holidays)) {
+      if (isHoliday(date, d, holidays, holidayOverrides)) {
         if (rowIdx === 0) {
           return `<td class="cg-cell cg-holiday-col" rowspan="${numRows}"><span class="grid-holiday-text">定休日</span></td>`;
         }
@@ -889,7 +891,8 @@ function renderDateTimeGrid() {
 // ============================================================
 function renderDatePicker() {
   const { calendarYear: year, calendarMonth: month } = state.ui;
-  const holidays   = state.settings?.holidays || [];
+  const holidays         = state.settings?.holidays || [];
+  const holidayOverrides = state.settings?.holidayOverrides || [];
   const today      = new Date(); today.setHours(0,0,0,0);
   const monthNames = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
   const firstDay   = new Date(year, month, 1);
@@ -906,7 +909,7 @@ function renderDatePicker() {
     const date    = new Date(year, month, d);
     const dateStr = formatDateStr(date);
     const isPast  = date < today;
-    const isHol   = isHoliday(dateStr, date, holidays);
+    const isHol   = isHoliday(dateStr, date, holidays, holidayOverrides);
     const isSel   = dateStr === state.form.date;
     const isTod   = formatDateStr(date) === formatDateStr(today);
     const dow     = date.getDay();
