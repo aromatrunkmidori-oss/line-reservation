@@ -229,6 +229,27 @@
     .grid-date-th.today-col.sun,
     .grid-date-th.today-col.sat { color: var(--primary); }
 
+    /* 一括トグルボタン */
+    .grid-bulk-btn {
+      display: block;
+      margin: 3px auto 0;
+      padding: 1px 4px;
+      font-size: 9px;
+      font-weight: 600;
+      border: 1px solid #aaa;
+      border-radius: 3px;
+      background: #fff;
+      color: var(--primary);
+      cursor: pointer;
+      line-height: 1.4;
+      white-space: nowrap;
+    }
+    .grid-bulk-btn.all-open {
+      color: #999;
+      border-color: #ccc;
+    }
+    .grid-bulk-btn:active { background: #f0f0f0; }
+
     /* 時間ラベル（sticky left） */
     .grid-time-td {
       position: sticky;

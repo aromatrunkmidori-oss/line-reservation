@@ -863,7 +863,11 @@ function renderGridTab() {
     if (date === today)  cls += ' today-col';
     else if (dow === 0)  cls += ' sun';
     else if (dow === 6)  cls += ' sat';
-    return `<th class="${cls}" id="col-${date}">${m}/${day}<br><span style="font-weight:400;font-size:10px;">${wk}</span></th>`;
+    const allOpen  = _isDayAllOpen(date);
+    const bulkLabel = allOpen ? '全×' : '全○';
+    const bulkTitle = allOpen ? '全クローズ' : '全開放';
+    const bulkBtn  = `<button class="grid-bulk-btn${allOpen ? ' all-open' : ''}" id="bulk-btn-${date}" onclick="bulkToggleDay('${date}')" title="${bulkTitle}">${bulkLabel}</button>`;
+    return `<th class="${cls}" id="col-${date}">${m}/${day}<br><span style="font-weight:400;font-size:10px;">${wk}</span>${bulkBtn}</th>`;
   }).join('');
 
   const { calMap, intervalSet } = state.gridData;
@@ -929,6 +933,48 @@ function renderGridTab() {
 // ============================================================
 // グリッドのデータ操作
 // ============================================================
+
+// その日の全非予約スロットが開放済みか判定
+function _isDayAllOpen(date) {
+  const isVisitMode = state.gridServiceType === '来店';
+  const { resMap, openSet } = state.gridData;
+  return GRID_TIMES.every(time => {
+    const key = `${date}_${time}`;
+    if (resMap.has(key)) return true; // 予約済みはスキップ（全開とみなす）
+    return isVisitMode ? !state.visitBlockSet.has(key) : openSet.has(key);
+  });
+}
+
+// その日の全非予約スロットを一括トグル
+function bulkToggleDay(date) {
+  const isVisitMode = state.gridServiceType === '来店';
+  const { resMap, openSet } = state.gridData;
+  const openAll = !_isDayAllOpen(date);
+  GRID_TIMES.forEach(time => {
+    const key = `${date}_${time}`;
+    if (resMap.has(key)) return;
+    if (isVisitMode) {
+      if (openAll) state.visitBlockSet.delete(key);
+      else         state.visitBlockSet.add(key);
+    } else {
+      if (openAll) openSet.add(key);
+      else         openSet.delete(key);
+    }
+    updateGridCell(date, time);
+  });
+  updateGridToolbar();
+  _updateBulkBtn(date);
+}
+
+// 一括トグルボタンの表示を更新
+function _updateBulkBtn(date) {
+  const btn = document.getElementById(`bulk-btn-${date}`);
+  if (!btn) return;
+  const allOpen = _isDayAllOpen(date);
+  btn.textContent = allOpen ? '全×' : '全○';
+  btn.className   = `grid-bulk-btn${allOpen ? ' all-open' : ''}`;
+  btn.title       = allOpen ? '全クローズ' : '全開放';
+}
 
 function setGridServiceType(type) {
   if (state.gridServiceType === type) return;
