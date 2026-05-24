@@ -1154,8 +1154,9 @@ async function loadGridData() {
     result.reservations.forEach(res => {
       const startMin = timeToMin(res.startTime);
       const endMin   = timeToMin(res.endTime);
-      // 終了後バッファ
-      for (let m = endMin; m < endMin + intervalMin; m += 30) {
+      // 終了後バッファ（終了が30分境界でない場合も次の境界から正しくカバー）
+      const postBufStart = Math.ceil(endMin / 30) * 30;
+      for (let m = postBufStart; m < endMin + intervalMin; m += 30) {
         const t = minutesToTimeStr(m);
         if (GRID_TIMES.includes(t)) intervalSet.add(`${res.date}_${t}`);
       }
@@ -2048,8 +2049,9 @@ function _parseBkGridDetail(result) {
   (result.reservations || []).forEach(res => {
     const startMin = timeToMin(res.startTime);
     const endMin   = timeToMin(res.endTime);
-    // 終了後バッファ
-    for (let m = endMin; m < endMin + intervalMin; m += 30) {
+    // 終了後バッファ（終了が30分境界でない場合も次の境界から正しくカバー）
+    const postBufStart = Math.ceil(endMin / 30) * 30;
+    for (let m = postBufStart; m < endMin + intervalMin; m += 30) {
       const t = minutesToTimeStr(m);
       if (GRID_TIMES.includes(t)) intervalSet.add(`${res.date}_${t}`);
     }
