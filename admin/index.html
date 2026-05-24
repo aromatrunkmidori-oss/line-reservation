@@ -229,6 +229,28 @@
     .grid-date-th.today-col.sun,
     .grid-date-th.today-col.sat { color: var(--primary); }
 
+    /* 定休日 解放トグルバッジ */
+    .grid-holiday-badge {
+      display: block;
+      margin: 2px auto 0;
+      padding: 1px 4px;
+      font-size: 8px;
+      font-weight: 600;
+      border: 1px solid #C62828;
+      border-radius: 3px;
+      background: #FFEBEE;
+      color: #C62828;
+      cursor: pointer;
+      line-height: 1.4;
+      white-space: nowrap;
+    }
+    .grid-holiday-badge.active {
+      background: #E8F5E9;
+      color: #2E7D32;
+      border-color: #2E7D32;
+    }
+    .grid-holiday-badge:active { opacity: .7; }
+
     /* 一括トグルボタン */
     .grid-bulk-btn {
       display: block;

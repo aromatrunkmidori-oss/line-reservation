@@ -868,7 +868,10 @@ function renderGridTab() {
     const bulkLabel = allOpen ? '全×' : '全○';
     const bulkTitle = allOpen ? '全クローズ' : '全開放';
     const bulkBtn  = `<button class="grid-bulk-btn${allOpen ? ' all-open' : ''}" id="bulk-btn-${date}" onclick="bulkToggleDay('${date}')" title="${bulkTitle}">${bulkLabel}</button>`;
-    const holidayBadge = isHol ? `<span style="display:block;font-size:8px;color:#C62828;font-weight:400;">定休</span>` : '';
+    const isOverridden = _holidayOverrides.includes(date);
+    const holidayBadge = isHol
+      ? `<button class="grid-holiday-badge${isOverridden ? ' active' : ''}" id="override-btn-${date}" onclick="handleToggleHolidayOverride('${date}')" title="${isOverridden ? 'クリックで解放を解除' : 'クリックで顧客に解放'}">${isOverridden ? '解放中' : '定休'}</button>`
+      : '';
     return `<th class="${cls}" id="col-${date}">${m}/${day}<br><span style="font-weight:400;font-size:10px;">${wk}</span>${holidayBadge}${bulkBtn}</th>`;
   }).join('');
 
@@ -929,6 +932,33 @@ function renderGridTab() {
 // ============================================================
 // グリッドのデータ操作
 // ============================================================
+
+// 定休日の例外解放をトグル（来店・出張共通）
+async function handleToggleHolidayOverride(date) {
+  try {
+    const result = await apiPost({ action: 'toggleHolidayOverride', date });
+    if (result.error) throw new Error(result.error);
+    if (result.override) {
+      if (!_holidayOverrides.includes(date)) _holidayOverrides.push(date);
+      showToast('顧客向けに解放しました');
+    } else {
+      _holidayOverrides = _holidayOverrides.filter(d => d !== date);
+      showToast('解放を解除しました');
+    }
+    _updateHolidayOverrideBtn(date);
+  } catch(err) {
+    showToast('更新に失敗しました: ' + err.message, true);
+  }
+}
+
+function _updateHolidayOverrideBtn(date) {
+  const btn = document.getElementById(`override-btn-${date}`);
+  if (!btn) return;
+  const isOverridden = _holidayOverrides.includes(date);
+  btn.className   = `grid-holiday-badge${isOverridden ? ' active' : ''}`;
+  btn.title       = isOverridden ? 'クリックで解放を解除' : 'クリックで顧客に解放';
+  btn.textContent = isOverridden ? '解放中' : '定休';
+}
 
 // その日の全非予約スロットが開放済みか判定
 function _isDayAllOpen(date) {
