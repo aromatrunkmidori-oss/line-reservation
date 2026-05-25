@@ -532,7 +532,7 @@ function renderVisitConfirm() {
 function renderMobileConfirm() {
   const f = state.form;
   if (!f.timeSlot || !f.duration) {
-    state.step = 'datetime';
+    state.step = stepNum('datetime');
     render();
     return '';
   }

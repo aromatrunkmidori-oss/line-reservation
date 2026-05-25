@@ -119,6 +119,7 @@ let _holidayOverrides = [];
 
 // 日付文字列が定休日かどうかを判定
 function _isHoliday(dateStr) {
+  if (_holidayOverrides.includes(dateStr)) return false;
   const d   = new Date(dateStr + 'T00:00:00+09:00');
   const dow = ['日曜日','月曜日','火曜日','水曜日','木曜日','金曜日','土曜日'][d.getDay()];
   return _holidays.includes(dow) || _holidays.includes(dateStr);
