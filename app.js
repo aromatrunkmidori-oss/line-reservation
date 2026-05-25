@@ -805,9 +805,6 @@ function renderDateTimeGrid() {
     visibleTimes = CUST_GRID_TIMES;
   }
 
-  const holidays         = state.settings?.holidays || [];
-  const holidayOverrides = state.settings?.holidayOverrides || [];
-
   // ── ヘッダー行 ──
   const headerCells = dates.map(date => {
     const d   = new Date(date + 'T00:00:00+09:00');
@@ -815,7 +812,7 @@ function renderDateTimeGrid() {
     const wk  = ['日','月','火','水','木','金','土'][dow];
     const m   = d.getMonth() + 1;
     const day = d.getDate();
-    if (isHoliday(date, d, holidays, holidayOverrides)) {
+    if (avail[date] === null) {
       return `<th class="cg-th cg-holiday">${m}/${day}<br><span class="cg-dow">${wk}</span></th>`;
     }
     let cls   = 'cg-th';
@@ -834,8 +831,7 @@ function renderDateTimeGrid() {
   // ── ボディ行（常に全行表示）──
   const bodyRows = visibleTimes.map((time, rowIdx) => {
     const cells = dates.map(date => {
-      const d = new Date(date + 'T00:00:00+09:00');
-      if (isHoliday(date, d, holidays, holidayOverrides)) {
+      if (avail[date] === null) {
         if (rowIdx === 0) {
           return `<td class="cg-cell cg-holiday-col" rowspan="${numRows}"><span class="grid-holiday-text">定休日</span></td>`;
         }
