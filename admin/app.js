@@ -594,7 +594,10 @@ function renderRescheduleGrid() {
             return `<td class="bk-cg-cell bk-cg-reserved"><div class="cell-res-inner"><span class="cell-name">${_bkEsc(res.customerName)}</span><span class="cell-type-tag ${tc}">${res.serviceType}</span></div></td>`;
           }
           const cal = detail.calMap.get(key);
-          if (cal) return `<td class="bk-cg-cell bk-cg-cal"><div class="cell-cal-inner">${_bkEsc(cal.title.length > 5 ? cal.title.slice(0,5)+'…' : cal.title)}</div></td>`;
+          if (cal) {
+            const calCls = cal.source === 'reservation_calendar' ? 'bk-cg-cal-direct' : 'bk-cg-cal';
+            return `<td class="bk-cg-cell ${calCls}"><div class="cell-cal-inner">${_bkEsc(cal.title.length > 5 ? cal.title.slice(0,5)+'…' : cal.title)}</div></td>`;
+          }
           if (detail.intervalSet.has(key)) return `<td class="bk-cg-cell bk-cg-interval"><span class="cell-interval-label">準備</span></td>`;
         }
         return `<td class="bk-cg-cell bk-cg-closed">−</td>`;
@@ -1087,8 +1090,12 @@ function _buildCell(key, date, time, { resMap, openSet, calMap, intervalSet, tod
     onclick = `onclick="localToggleGridCell('${date}','${time}')"`;
 
   } else if (cal) {
-    // ── プライベートカレンダー予定（トグル可能）
-    cls    += isOpen ? ' cal-event-open' : ' cal-event';
+    // ── カレンダー予定（予約カレンダー直接入力 or プライベート）
+    if (cal.source === 'reservation_calendar') {
+      cls += isOpen ? ' cal-direct-open' : ' cal-direct';
+    } else {
+      cls += isOpen ? ' cal-event-open' : ' cal-event';
+    }
     const shortTitle = cal.title.length > 5 ? cal.title.slice(0, 5) + '…' : cal.title;
     content = `<div class="cell-cal-inner">${shortTitle}</div>`;
     onclick = `onclick="localToggleGridCell('${date}','${time}')"`;
@@ -1198,7 +1205,7 @@ async function loadGridData() {
       }
     });
 
-    // ③ カレンダーイベント（プライベート）からマップを構築
+    // ③ カレンダーイベントからマップを構築（source を保持して描画で区別）
     const calMap = new Map();
     (result.calendarEvents || []).forEach(ev => {
       const start = timeToMin(ev.startTime);
@@ -1211,7 +1218,7 @@ async function loadGridData() {
         if (GRID_TIMES.includes(t)) {
           const key = `${ev.date}_${t}`;
           // 同ブロックに複数イベントがある場合は先着優先
-          if (!calMap.has(key)) calMap.set(key, { title: ev.title });
+          if (!calMap.has(key)) calMap.set(key, { title: ev.title, source: ev.source });
         }
       }
     });
@@ -1801,8 +1808,9 @@ function _renderBkGrid() {
           }
           const cal = detail.calMap.get(key);
           if (cal) {
+            const calCls = cal.source === 'reservation_calendar' ? 'bk-cg-cal-direct' : 'bk-cg-cal';
             const t = cal.title.length > 5 ? cal.title.slice(0, 5) + '…' : cal.title;
-            return `<td class="bk-cg-cell bk-cg-cal"><div class="cell-cal-inner">${_bkEsc(t)}</div></td>`;
+            return `<td class="bk-cg-cell ${calCls}"><div class="cell-cal-inner">${_bkEsc(t)}</div></td>`;
           }
           if (detail.intervalSet.has(key)) {
             return `<td class="bk-cg-cell bk-cg-interval"><span class="cell-interval-label">準備</span></td>`;
@@ -2114,7 +2122,7 @@ function _parseBkGridDetail(result) {
     for (let m = blockStart; m < blockEnd; m += 30) {
       const t = minutesToTimeStr(m);
       if (GRID_TIMES.includes(t) && !calMap.has(`${ev.date}_${t}`))
-        calMap.set(`${ev.date}_${t}`, { title: ev.title });
+        calMap.set(`${ev.date}_${t}`, { title: ev.title, source: ev.source });
     }
   });
 
