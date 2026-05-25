@@ -359,6 +359,7 @@ function renderReservationsTab() {
     const cards = byDate[date].map(r => {
       const isCancelled = r.status === 'cancelled';
       const isWeb       = r.source === 'WEB';
+      const isCal       = r.source === 'CALENDAR';
       const badgeClass  = r.serviceType === '来店' ? 'badge-visit' : 'badge-mobile';
       return `
         <div class="reservation-card tappable${isCancelled ? ' cancelled' : ''}"
@@ -367,6 +368,7 @@ function renderReservationsTab() {
           <div class="reservation-info">
             <span class="service-badge ${badgeClass}">${r.serviceType}</span>
             ${isWeb ? '<span class="service-badge badge-web">WEB</span>' : ''}
+            ${isCal ? '<span class="service-badge badge-cal">CAL</span>' : ''}
             <span class="reservation-name">${r.customerName}</span>
             ${isCancelled ? '<span class="badge-cancelled">キャンセル済</span>' : ''}
           </div>
@@ -391,6 +393,7 @@ function openReservationDetail(reservationId) {
 
   const isCancelled = r.status === 'cancelled';
   const isWeb       = r.source === 'WEB';
+  const isCal       = r.source === 'CALENDAR';
   const badgeClass  = r.serviceType === '来店' ? 'badge-visit' : 'badge-mobile';
 
   const overlay = document.createElement('div');
@@ -419,7 +422,7 @@ function openReservationDetail(reservationId) {
         </div>
         <div class="detail-row">
           <span class="detail-label">種別</span>
-          <span class="detail-value"><span class="service-badge ${badgeClass}">${r.serviceType}</span>${isWeb ? ' <span class="service-badge badge-web">WEB</span>' : ''}</span>
+          <span class="detail-value"><span class="service-badge ${badgeClass}">${r.serviceType}</span>${isWeb ? ' <span class="service-badge badge-web">WEB</span>' : ''}${isCal ? ' <span class="service-badge badge-cal">CAL</span>' : ''}</span>
         </div>
         ${r.address ? `
         <div class="detail-row">
