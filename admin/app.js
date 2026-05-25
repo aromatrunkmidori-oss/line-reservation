@@ -1267,7 +1267,7 @@ async function loadGridData() {
       }
       // 後バッファ: [evEnd, evEnd + calIntervalMin)
       const postBufEnd = evEnd + calIntervalMin;
-      for (let m = evEnd; m < postBufEnd; m += 30) {
+      for (let m = Math.ceil(evEnd / 30) * 30; m < postBufEnd; m += 30) {
         const t = minutesToTimeStr(m);
         if (GRID_TIMES.includes(t) && !calMap.has(`${ev.date}_${t}`)) {
           intervalSet.add(`${ev.date}_${t}`);
@@ -2158,7 +2158,7 @@ function _parseBkGridDetail(result) {
       const t = minutesToTimeStr(m);
       if (GRID_TIMES.includes(t) && !calMap.has(`${ev.date}_${t}`)) intervalSet.add(`${ev.date}_${t}`);
     }
-    for (let m = evEnd; m < evEnd + calIntervalMin; m += 30) {
+    for (let m = Math.ceil(evEnd / 30) * 30; m < evEnd + calIntervalMin; m += 30) {
       const t = minutesToTimeStr(m);
       if (GRID_TIMES.includes(t) && !calMap.has(`${ev.date}_${t}`)) intervalSet.add(`${ev.date}_${t}`);
     }
