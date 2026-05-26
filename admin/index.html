@@ -449,6 +449,57 @@
       border: 1px solid #FFCC80;
     }
 
+    /* ── スパンセル（rowspan で結合した予約・カレンダー枠）── */
+    .grid-cell.span-cell {
+      vertical-align: top;
+      padding: 5px 3px;
+      cursor: default;
+    }
+    .grid-cell.span-cell.cal-event,
+    .grid-cell.span-cell.cal-event-open,
+    .grid-cell.span-cell.cal-direct,
+    .grid-cell.span-cell.cal-direct-open { cursor: pointer; }
+    /* 予約スパン — 時刻ラベル */
+    .cell-res-time {
+      font-size: 8px;
+      font-weight: 500;
+      color: #888;
+      letter-spacing: -0.2px;
+    }
+    /* 予約スパン — メニュー名 */
+    .cell-menu {
+      font-size: 8px;
+      font-weight: 400;
+      color: #999;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 52px;
+    }
+    /* カレンダーイベントスパン */
+    .cell-cal-span {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      overflow: hidden;
+      max-width: 52px;
+    }
+    .cell-cal-title {
+      font-size: 9px;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 52px;
+    }
+    .cell-cal-timerange {
+      font-size: 8px;
+      font-weight: 400;
+      opacity: 0.75;
+      white-space: nowrap;
+    }
+
     /* ── タップ効果 ── */
     .reservation-card.tappable {
       cursor: pointer;

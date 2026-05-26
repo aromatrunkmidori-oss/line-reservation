@@ -887,11 +887,50 @@ function renderGridTab() {
 
   const { calMap, intervalSet } = state.gridData;
   const numRows = GRID_TIMES.length;
+  const _isVisit = state.gridServiceType === '来店';
+
+  // スパン情報を事前計算（rowspan 用）
+  const { resSpanStart, resSkipSet, calSpanStart, calSkipSet } = buildSpanMaps(dates, resMap, calMap);
 
   // ボディ行
   const bodyRows = GRID_TIMES.map((time) => {
     const cells = dates.map(date => {
       const key = `${date}_${time}`;
+
+      // 上位 rowspan に包含されるセルはスキップ
+      if (resSkipSet.has(key) || calSkipSet.has(key)) return '';
+
+      // ── 予約スパンセル（rowspan あり）
+      const resSpan = resSpanStart.get(key);
+      if (resSpan) {
+        const { rowspan, res, startTime, endTime } = resSpan;
+        const isOpen    = _isVisit ? !state.visitBlockSet.has(key) : openSet.has(key);
+        const typeClass = res.serviceType === '出張' ? 'dot-mobile' : 'dot-visit';
+        let cls = `grid-cell ${isOpen ? 'reserved-open' : 'reserved'} span-cell`;
+        if (date === today)   cls += ' today-col';
+        if (_isHoliday(date)) cls += ' holiday-col';
+        const menuShort = (res.menuName || '').length > 8 ? res.menuName.slice(0, 8) + '…' : (res.menuName || '');
+        const menuHtml  = menuShort ? `<span class="cell-menu">${menuShort}</span>` : '';
+        const content   = `<div class="cell-res-inner"><span class="cell-res-time">${startTime}〜${endTime}</span><span class="cell-name">${res.customerName}</span><span class="cell-type-tag ${typeClass}">${res.serviceType}</span>${menuHtml}</div>`;
+        return `<td class="${cls}" id="cell-${key}" rowspan="${rowspan}" onclick="showToast('${res.customerName}（${res.serviceType} ${startTime}〜${endTime}）', false)">${content}</td>`;
+      }
+
+      // ── カレンダーイベントスパンセル（rowspan あり）
+      const calSpan = calSpanStart.get(key);
+      if (calSpan) {
+        const { rowspan, cal, startTime, endTime } = calSpan;
+        const isOpen  = _isVisit ? !state.visitBlockSet.has(key) : openSet.has(key);
+        const srcCls  = cal.source === 'reservation_calendar' ? 'cal-direct' : 'cal-event';
+        let cls = `grid-cell ${srcCls}${isOpen ? '-open' : ''} span-cell`;
+        if (date === today)   cls += ' today-col';
+        if (_isHoliday(date)) cls += ' holiday-col';
+        const titleShort = cal.title.length > 8 ? cal.title.slice(0, 8) + '…' : cal.title;
+        const startIdx   = GRID_TIMES.indexOf(startTime);
+        const content    = `<div class="cell-cal-inner cell-cal-span"><span class="cell-cal-title">${titleShort}</span><span class="cell-cal-timerange">${startTime}〜${endTime}</span></div>`;
+        return `<td class="${cls}" id="cell-${key}" rowspan="${rowspan}" onclick="localToggleGridCellSpan('${date}', ${startIdx}, ${rowspan})">${content}</td>`;
+      }
+
+      // ── 通常セル
       const [cls, content, onclick] = _buildCell(key, date, time, { resMap, openSet, calMap, intervalSet, today });
       return `<td class="${cls}" id="cell-${key}" ${onclick}>${content}</td>`;
     }).join('');
@@ -937,6 +976,68 @@ function renderGridTab() {
         </table>
       </div>
     </div>`;
+}
+
+// ============================================================
+// スパンマップを構築（予約・カレンダーイベントの連続スロットを検出）
+// ============================================================
+function buildSpanMaps(dates, resMap, calMap) {
+  const resSpanStart = new Map(); // "date_time" → { rowspan, res, startTime, endTime }
+  const resSkipSet   = new Set(); // 上位 rowspan に包含されるスロット（td を生成しない）
+  const calSpanStart = new Map();
+  const calSkipSet   = new Set();
+
+  dates.forEach(date => {
+    // 予約スパン
+    let i = 0;
+    while (i < GRID_TIMES.length) {
+      const time = GRID_TIMES[i];
+      const key  = `${date}_${time}`;
+      const res  = resMap.get(key);
+      if (res) {
+        let span = 1;
+        while (i + span < GRID_TIMES.length) {
+          const nk   = `${date}_${GRID_TIMES[i + span]}`;
+          const nRes = resMap.get(nk);
+          if (nRes && nRes.customerName === res.customerName && nRes.serviceType === res.serviceType) {
+            resSkipSet.add(nk);
+            span++;
+          } else break;
+        }
+        const endTime = minutesToTimeStr(timeToMin(GRID_TIMES[i + span - 1]) + 30);
+        resSpanStart.set(key, { rowspan: span, res, startTime: time, endTime });
+        i += span;
+      } else {
+        i++;
+      }
+    }
+
+    // カレンダーイベントスパン（予約が存在するスロットは除外）
+    let j = 0;
+    while (j < GRID_TIMES.length) {
+      const time = GRID_TIMES[j];
+      const key  = `${date}_${time}`;
+      if (calMap && calMap.has(key) && !resMap.has(key)) {
+        const cal = calMap.get(key);
+        let span  = 1;
+        while (j + span < GRID_TIMES.length) {
+          const nk   = `${date}_${GRID_TIMES[j + span]}`;
+          const nCal = calMap.get(nk);
+          if (nCal && !resMap.has(nk) && nCal.title === cal.title && nCal.source === cal.source) {
+            calSkipSet.add(nk);
+            span++;
+          } else break;
+        }
+        const endTime = minutesToTimeStr(timeToMin(GRID_TIMES[j + span - 1]) + 30);
+        calSpanStart.set(key, { rowspan: span, cal, startTime: time, endTime });
+        j += span;
+      } else {
+        j++;
+      }
+    }
+  });
+
+  return { resSpanStart, resSkipSet, calSpanStart, calSkipSet };
 }
 
 // ============================================================
@@ -1044,6 +1145,38 @@ function localToggleGridCell(date, time) {
   }
   updateGridCell(date, time);
   updateGridToolbar();
+}
+
+// スパン全スロットをまとめてトグル（カレンダーイベントの merged cell 用）
+function localToggleGridCellSpan(date, startIdx, span) {
+  for (let s = 0; s < span; s++) {
+    const time = GRID_TIMES[startIdx + s];
+    if (!time) continue;
+    const key = `${date}_${time}`;
+    if (state.gridServiceType === '来店') {
+      if (state.visitBlockSet.has(key)) state.visitBlockSet.delete(key);
+      else                              state.visitBlockSet.add(key);
+    } else {
+      if (state.gridData.openSet.has(key)) state.gridData.openSet.delete(key);
+      else                                 state.gridData.openSet.add(key);
+    }
+  }
+  updateGridToolbar();
+  // スパンセル（先頭スロット）の背景色だけ切り替え
+  const firstTime = GRID_TIMES[startIdx];
+  const key = `${date}_${firstTime}`;
+  const td  = document.getElementById(`cell-${key}`);
+  if (!td) return;
+  const cal = state.gridData.calMap && state.gridData.calMap.get(key);
+  if (!cal) return;
+  const isOpen  = state.gridServiceType === '来店'
+    ? !state.visitBlockSet.has(key)
+    : state.gridData.openSet.has(key);
+  const srcCls  = cal.source === 'reservation_calendar' ? 'cal-direct' : 'cal-event';
+  let cls = `grid-cell ${srcCls}${isOpen ? '-open' : ''} span-cell`;
+  if (date === todayStr())  cls += ' today-col';
+  if (_isHoliday(date))    cls += ' holiday-col';
+  td.className = cls;
 }
 
 // 対象セルのみDOMを更新
