@@ -888,7 +888,10 @@ function renderDateTimeGrid() {
 function renderDatePicker() {
   const { calendarYear: year, calendarMonth: month } = state.ui;
   const holidays         = state.settings?.holidays || [];
-  const holidayOverrides = state.settings?.holidayOverrides || [];
+  const isVisitType      = state.form.serviceType !== '出張';
+  const holidayOverrides = isVisitType
+    ? (state.settings?.holidayOverridesVisit  || [])
+    : (state.settings?.holidayOverridesMobile || []);
   const today      = new Date(); today.setHours(0,0,0,0);
   const monthNames = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
   const firstDay   = new Date(year, month, 1);

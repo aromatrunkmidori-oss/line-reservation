@@ -114,12 +114,14 @@ let _bkForm = _defaultBkForm();
 // ============================================================
 // 定休日リスト（getGridData / getSettings から取得後にセット）
 let _holidays = [];
-// 定休日例外解放リスト
-let _holidayOverrides = [];
+// 定休日例外解放リスト（来店・出張で分離）
+let _holidayOverridesVisit  = [];
+let _holidayOverridesMobile = [];
 
-// 日付文字列が定休日かどうかを判定
+// 日付文字列が定休日かどうかを判定（現在のgridServiceTypeを参照）
 function _isHoliday(dateStr) {
-  if (_holidayOverrides.includes(dateStr)) return false;
+  const overrides = state.gridServiceType === '来店' ? _holidayOverridesVisit : _holidayOverridesMobile;
+  if (overrides.includes(dateStr)) return false;
   const d   = new Date(dateStr + 'T00:00:00+09:00');
   const dow = ['日曜日','月曜日','火曜日','水曜日','木曜日','金曜日','土曜日'][d.getDay()];
   return _holidays.includes(dow) || _holidays.includes(dateStr);
@@ -875,7 +877,8 @@ function renderGridTab() {
     const bulkLabel = allOpen ? '全×' : '全○';
     const bulkTitle = allOpen ? '全クローズ' : '全開放';
     const bulkBtn  = `<button class="grid-bulk-btn${allOpen ? ' all-open' : ''}" id="bulk-btn-${date}" onclick="bulkToggleDay('${date}')" title="${bulkTitle}">${bulkLabel}</button>`;
-    const isOverridden = _holidayOverrides.includes(date);
+    const _curOverrides = state.gridServiceType === '来店' ? _holidayOverridesVisit : _holidayOverridesMobile;
+    const isOverridden = _curOverrides.includes(date);
     const holidayBadge = isHol
       ? `<button class="grid-holiday-badge${isOverridden ? ' active' : ''}" id="override-btn-${date}" onclick="handleToggleHolidayOverride('${date}')" title="${isOverridden ? 'クリックで解放を解除' : 'クリックで顧客に解放'}">${isOverridden ? '解放中' : '定休'}</button>`
       : '';
@@ -940,18 +943,25 @@ function renderGridTab() {
 // グリッドのデータ操作
 // ============================================================
 
-// 定休日の例外解放をトグル（来店・出張共通）
 async function handleToggleHolidayOverride(date) {
+  const serviceType = state.gridServiceType;
   try {
-    const result = await apiPost({ action: 'toggleHolidayOverride', date });
+    const result = await apiPost({ action: 'toggleHolidayOverride', date, serviceType });
     if (result.error) throw new Error(result.error);
-    if (result.override) {
-      if (!_holidayOverrides.includes(date)) _holidayOverrides.push(date);
-      showToast('顧客向けに解放しました');
+    if (serviceType === '来店') {
+      if (result.override) {
+        if (!_holidayOverridesVisit.includes(date)) _holidayOverridesVisit.push(date);
+      } else {
+        _holidayOverridesVisit = _holidayOverridesVisit.filter(d => d !== date);
+      }
     } else {
-      _holidayOverrides = _holidayOverrides.filter(d => d !== date);
-      showToast('解放を解除しました');
+      if (result.override) {
+        if (!_holidayOverridesMobile.includes(date)) _holidayOverridesMobile.push(date);
+      } else {
+        _holidayOverridesMobile = _holidayOverridesMobile.filter(d => d !== date);
+      }
     }
+    showToast(result.override ? '顧客向けに解放しました' : '解放を解除しました');
     _updateHolidayOverrideBtn(date);
   } catch(err) {
     showToast('更新に失敗しました: ' + err.message, true);
@@ -961,7 +971,8 @@ async function handleToggleHolidayOverride(date) {
 function _updateHolidayOverrideBtn(date) {
   const btn = document.getElementById(`override-btn-${date}`);
   if (!btn) return;
-  const isOverridden = _holidayOverrides.includes(date);
+  const overrides   = state.gridServiceType === '来店' ? _holidayOverridesVisit : _holidayOverridesMobile;
+  const isOverridden = overrides.includes(date);
   btn.className   = `grid-holiday-badge${isOverridden ? ' active' : ''}`;
   btn.title       = isOverridden ? 'クリックで解放を解除' : 'クリックで顧客に解放';
   btn.textContent = isOverridden ? '解放中' : '定休';
@@ -1293,8 +1304,9 @@ async function loadGridData() {
     state.gridOriginalOpen  = new Set(openSet);
     state.visitBlockSet     = visitBlockSet;
     state.gridOriginalBlock = new Set(visitBlockSet);
-    if (Array.isArray(result.holidays))         _holidays         = result.holidays;
-    if (Array.isArray(result.holidayOverrides)) _holidayOverrides = result.holidayOverrides;
+    if (Array.isArray(result.holidays))                _holidays               = result.holidays;
+    if (Array.isArray(result.holidayOverridesVisit))  _holidayOverridesVisit  = result.holidayOverridesVisit;
+    if (Array.isArray(result.holidayOverridesMobile)) _holidayOverridesMobile = result.holidayOverridesMobile;
 
   } catch(err) {
     state.gridData = null;
