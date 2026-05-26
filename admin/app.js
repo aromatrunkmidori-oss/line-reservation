@@ -909,8 +909,7 @@ function renderGridTab() {
         let cls = `grid-cell ${isOpen ? 'reserved-open' : 'reserved'} span-cell`;
         if (date === today)   cls += ' today-col';
         if (_isHoliday(date)) cls += ' holiday-col';
-        const menuShort = (res.menuName || '').length > 8 ? res.menuName.slice(0, 8) + '…' : (res.menuName || '');
-        const menuHtml  = menuShort ? `<span class="cell-menu">${menuShort}</span>` : '';
+        const menuHtml  = res.menuName ? `<span class="cell-menu">${res.menuName}</span>` : '';
         const content   = `<div class="cell-res-inner"><span class="cell-res-time">${startTime}〜${endTime}</span><span class="cell-name">${res.customerName}</span><span class="cell-type-tag ${typeClass}">${res.serviceType}</span>${menuHtml}</div>`;
         return `<td class="${cls}" id="cell-${key}" rowspan="${rowspan}" onclick="showToast('${res.customerName}（${res.serviceType} ${startTime}〜${endTime}）', false)">${content}</td>`;
       }
@@ -924,9 +923,8 @@ function renderGridTab() {
         let cls = `grid-cell ${srcCls}${isOpen ? '-open' : ''} span-cell`;
         if (date === today)   cls += ' today-col';
         if (_isHoliday(date)) cls += ' holiday-col';
-        const titleShort = cal.title.length > 8 ? cal.title.slice(0, 8) + '…' : cal.title;
-        const startIdx   = GRID_TIMES.indexOf(startTime);
-        const content    = `<div class="cell-cal-inner cell-cal-span"><span class="cell-cal-title">${titleShort}</span><span class="cell-cal-timerange">${startTime}〜${endTime}</span></div>`;
+        const startIdx = GRID_TIMES.indexOf(startTime);
+        const content  = `<div class="cell-cal-inner cell-cal-span"><span class="cell-cal-title">${cal.title}</span><span class="cell-cal-timerange">${startTime}〜${endTime}</span></div>`;
         return `<td class="${cls}" id="cell-${key}" rowspan="${rowspan}" onclick="localToggleGridCellSpan('${date}', ${startIdx}, ${rowspan})">${content}</td>`;
       }
 
