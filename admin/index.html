@@ -378,10 +378,17 @@
       cursor: pointer;
     }
     .cell-cal-inner {
-      white-space: nowrap;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1px;
       overflow: hidden;
-      text-overflow: ellipsis;
       max-width: 50px;
+    }
+    .dot-private {
+      background: #EDE7F6;
+      color: #4527A0;
+      border: 1px solid #B39DDB;
     }
 
     /* ── インターバル（受付不可バッファ）── */

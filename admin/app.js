@@ -924,7 +924,7 @@ function renderGridTab() {
         if (date === today)   cls += ' today-col';
         if (_isHoliday(date)) cls += ' holiday-col';
         const startIdx = GRID_TIMES.indexOf(startTime);
-        const content  = `<div class="cell-cal-inner cell-cal-span"><span class="cell-cal-title">${cal.title}</span><span class="cell-cal-timerange">${startTime}〜${endTime}</span></div>`;
+        const content  = `<div class="cell-cal-inner cell-cal-span"><span class="cell-cal-title">${cal.title}</span><span class="cell-cal-timerange">${startTime}〜${endTime}</span>${_calBadgeHtml(cal.source)}</div>`;
         return `<td class="${cls}" id="cell-${key}" rowspan="${rowspan}" onclick="localToggleGridCellSpan('${date}', ${startIdx}, ${rowspan})">${content}</td>`;
       }
 
@@ -1190,6 +1190,12 @@ function updateGridCell(date, time) {
   td.innerHTML = content;
 }
 
+// カレンダーイベント種別バッジ HTML を返す
+function _calBadgeHtml(source) {
+  if (source === 'reservation_calendar') return '';
+  return '<span class="cell-type-tag dot-private">プライベート</span>';
+}
+
 // ============================================================
 // セル描画ヘルパー：[className, innerHTML, onclickAttr] を返す
 // 優先順位: 予約 > pending変更 > カレンダー予定 > インターバル > open/closed
@@ -1243,7 +1249,7 @@ function _buildCell(key, date, time, { resMap, openSet, calMap, intervalSet, tod
       cls += isOpen ? ' cal-event-open' : ' cal-event';
     }
     const shortTitle = cal.title.length > 5 ? cal.title.slice(0, 5) + '…' : cal.title;
-    content = `<div class="cell-cal-inner">${shortTitle}</div>`;
+    content = `<div class="cell-cal-inner">${shortTitle}${_calBadgeHtml(cal.source)}</div>`;
     onclick = `onclick="localToggleGridCell('${date}','${time}')"`;
 
   } else if (inInterval) {
