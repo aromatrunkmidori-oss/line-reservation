@@ -879,7 +879,7 @@ function renderGridTab() {
     const bulkBtn  = `<button class="grid-bulk-btn${allOpen ? ' all-open' : ''}" id="bulk-btn-${date}" onclick="bulkToggleDay('${date}')" title="${bulkTitle}">${bulkLabel}</button>`;
     const _curOverrides = state.gridServiceType === '来店' ? _holidayOverridesVisit : _holidayOverridesMobile;
     const isOverridden = _curOverrides.includes(date);
-    const holidayBadge = isHol
+    const holidayBadge = (isHol || isOverridden)
       ? `<button class="grid-holiday-badge${isOverridden ? ' active' : ''}" id="override-btn-${date}" onclick="handleToggleHolidayOverride('${date}')" title="${isOverridden ? 'クリックで解放を解除' : 'クリックで顧客に解放'}">${isOverridden ? '解放中' : '定休'}</button>`
       : '';
     return `<th class="${cls}" id="col-${date}">${m}/${day}<br><span style="font-weight:400;font-size:10px;">${wk}</span>${holidayBadge}${bulkBtn}</th>`;
