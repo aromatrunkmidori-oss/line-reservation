@@ -1192,7 +1192,7 @@ function updateGridCell(date, time) {
 
 // カレンダーイベント種別バッジ HTML を返す
 function _calBadgeHtml(source) {
-  if (source === 'reservation_calendar') return '';
+  if (source === 'reservation_calendar') return '<span class="cell-type-tag dot-direct">直接入力</span>';
   return '<span class="cell-type-tag dot-private">プライベート</span>';
 }
 
