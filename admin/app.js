@@ -148,6 +148,8 @@ const state = {
   selectedCustomer: null,          // { customer, history }
   selectedCustomerLoading: false,
   karteSaving: {},                 // { karteId: 'saving'|'saved'|null }
+  customerEditMode: false,
+  customerSaving: false,
 };
 
 // ============================================================
@@ -1551,6 +1553,36 @@ function closeCustomerDetail() {
   state.selectedCustomer        = null;
   state.selectedCustomerLoading = false;
   state.karteSaving             = {};
+  state.customerEditMode        = false;
+  state.customerSaving          = false;
+  renderContent();
+}
+
+function toggleCustomerEditMode() {
+  state.customerEditMode = !state.customerEditMode;
+  renderContent();
+}
+
+async function saveCustomerInfo() {
+  const c = (state.selectedCustomer || {}).customer || {};
+  const name    = (document.getElementById('ct-edit-name')    || {}).value || '';
+  const phone   = (document.getElementById('ct-edit-phone')   || {}).value || '';
+  const address = (document.getElementById('ct-edit-address') || {}).value || '';
+  const notes   = (document.getElementById('ct-edit-notes')   || {}).value || '';
+
+  if (!name.trim()) { showToast('氏名を入力してください', true); return; }
+
+  state.customerSaving = true;
+  renderContent();
+  try {
+    await apiPost({ action: 'updateCustomer', lineUserId: c.lineUserId, name: name.trim(), phone, address, notes });
+    state.selectedCustomer.customer = Object.assign({}, c, { name: name.trim(), phone, address, notes });
+    state.customerEditMode = false;
+    if (state.customerList.length > 0) loadCustomerList();
+  } catch(e) {
+    showToast('保存に失敗しました', true);
+  }
+  state.customerSaving = false;
   renderContent();
 }
 
@@ -1637,10 +1669,46 @@ function _renderCustomerDetail() {
   const { customer, history } = state.selectedCustomer;
   const c = customer || {};
 
+  // 編集モード
+  if (state.customerEditMode) {
+    const saving = state.customerSaving;
+    return `
+      <div class="ct-detail">
+        <div class="ct-detail-header">
+          <button class="btn-back-reschedule" onclick="toggleCustomerEditMode()" ${saving ? 'disabled' : ''}>← キャンセル</button>
+          <span class="ct-detail-name">顧客情報を編集</span>
+        </div>
+        <div class="ct-edit-form">
+          <div class="ct-edit-row">
+            <label class="ct-edit-label">氏名 <span style="color:#c62828">*</span></label>
+            <input class="ct-edit-input" id="ct-edit-name" type="text" value="${_bkEsc(c.name || '')}" placeholder="氏名">
+          </div>
+          <div class="ct-edit-row">
+            <label class="ct-edit-label">電話</label>
+            <input class="ct-edit-input" id="ct-edit-phone" type="tel" value="${_bkEsc(c.phone || '')}" placeholder="09012345678">
+          </div>
+          <div class="ct-edit-row">
+            <label class="ct-edit-label">住所</label>
+            <input class="ct-edit-input" id="ct-edit-address" type="text" value="${_bkEsc(c.address || '')}" placeholder="住所">
+          </div>
+          <div class="ct-edit-row">
+            <label class="ct-edit-label">備考</label>
+            <textarea class="ct-memo-textarea" id="ct-edit-notes" rows="3" placeholder="備考・アレルギー等">${_bkEsc(c.notes || '')}</textarea>
+          </div>
+        </div>
+        <div class="ct-edit-actions">
+          <button class="btn btn-ghost" onclick="toggleCustomerEditMode()" ${saving ? 'disabled' : ''}>キャンセル</button>
+          <button class="btn btn-primary" onclick="saveCustomerInfo()" ${saving ? 'disabled' : ''}>${saving ? '保存中...' : '保存する'}</button>
+        </div>
+      </div>`;
+  }
+
+  // 表示モード
   const infoRows = [
     c.phone   ? `<div class="ct-info-row"><span class="ct-info-label">電話</span><span>${_bkEsc(c.phone)}</span></div>` : '',
     c.address ? `<div class="ct-info-row"><span class="ct-info-label">住所</span><span>${_bkEsc(c.address)}</span></div>` : '',
     c.firstVisitDate ? `<div class="ct-info-row"><span class="ct-info-label">初回</span><span>${formatDateLabel(c.firstVisitDate)}</span></div>` : '',
+    c.notes   ? `<div class="ct-info-row"><span class="ct-info-label">備考</span><span style="white-space:pre-wrap">${_bkEsc(c.notes)}</span></div>` : '',
   ].filter(Boolean).join('');
 
   const items = (history || []).map(r => {
@@ -1675,6 +1743,7 @@ function _renderCustomerDetail() {
       <div class="ct-detail-header">
         <button class="btn-back-reschedule" onclick="closeCustomerDetail()">← 一覧に戻る</button>
         <span class="ct-detail-name">${_bkEsc(c.name || '')}</span>
+        <button class="ct-edit-btn" onclick="toggleCustomerEditMode()">編集</button>
       </div>
       ${infoRows ? `<div class="ct-info-block">${infoRows}</div>` : ''}
       <div class="ct-history-label">施術履歴（${(history||[]).length}件）</div>

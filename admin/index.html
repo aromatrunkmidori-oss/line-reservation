@@ -1351,6 +1351,47 @@
     }
     .ct-save-btn:active { opacity: .75; }
     .ct-no-karte { font-size: 12px; color: var(--text-secondary); margin: 4px 0 0; }
+    .ct-edit-btn {
+      margin-left: auto;
+      background: none;
+      border: 1px solid var(--primary);
+      color: var(--primary);
+      border-radius: var(--radius-sm);
+      padding: 5px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .ct-edit-btn:active { opacity: .7; }
+    .ct-edit-form {
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      border-bottom: 1px solid var(--border-light);
+    }
+    .ct-edit-row { display: flex; flex-direction: column; gap: 4px; }
+    .ct-edit-label { font-size: 11px; color: var(--text-secondary); font-weight: 600; }
+    .ct-edit-input {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-size: 14px;
+      font-family: inherit;
+      color: var(--text-primary);
+      background: var(--bg);
+    }
+    .ct-edit-input:focus { outline: none; border-color: var(--primary); }
+    .ct-edit-actions {
+      display: flex;
+      gap: 10px;
+      padding: 16px;
+      justify-content: flex-end;
+    }
+    .ct-edit-actions .btn { width: auto; padding: 10px 20px; margin-top: 0; }
   </style>
 </head>
 <body>
