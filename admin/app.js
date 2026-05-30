@@ -139,6 +139,7 @@ const state = {
   visitBlockSet: null,      // Set<"date_time"> — 来店ブロック
   gridOriginalBlock: null,  // Set<"date_time"> — 来店ブロック保存済み状態
   gridServiceType: '出張',  // '来店' | '出張'
+  gridTabStartDate: null,   // null = today（遅延初期化）
   gridLoading: false,
   gridSaving: false,
   // 顧客カルテタブ
@@ -169,13 +170,14 @@ function shiftDate(dateStr, days) {
   d.setDate(d.getDate() + days);
   return dateToStr(d);
 }
-// 今日から31日分の日付配列
+// gridTabStartDate から31日分の日付配列
 function getGridDates() {
-  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const start = state.gridTabStartDate || todayStr();
+  const d0    = new Date(start + 'T00:00:00+09:00');
   const dates = [];
   for (let i = 0; i < 31; i++) {
-    const d = new Date(today);
-    d.setDate(today.getDate() + i);
+    const d = new Date(d0);
+    d.setDate(d0.getDate() + i);
     dates.push(dateToStr(d));
   }
   return dates;
@@ -962,6 +964,12 @@ function renderGridTab() {
           </button>
         </div>
       </div>
+      <div class="bk-cg-nav" style="padding:8px 0;">
+        <button class="bk-cg-nav-btn" onclick="changeGridTab(-31)"
+                ${shiftDate(state.gridTabStartDate || today, -31) < today ? 'disabled' : ''}>‹ 前の31日</button>
+        <span style="font-size:13px;color:var(--text-secondary);">${formatDateLabel(dates[0]).split('（')[0]} 〜 ${formatDateLabel(dates[dates.length - 1]).split('（')[0]}</span>
+        <button class="bk-cg-nav-btn" onclick="changeGridTab(31)">次の31日 ›</button>
+      </div>
       <div class="grid-scroll" id="grid-scroll">
         <table class="grid-table">
           <thead>
@@ -1117,6 +1125,22 @@ function _updateBulkBtn(date) {
   btn.textContent = allOpen ? '全×' : '全○';
   btn.className   = `grid-bulk-btn${allOpen ? ' all-open' : ''}`;
   btn.title       = allOpen ? '全クローズ' : '全開放';
+}
+
+function changeGridTab(delta) {
+  const changes = getGridChanges();
+  if (Object.keys(changes).length > 0) {
+    if (!confirm('未保存の変更があります。移動すると変更が失われます。')) return;
+  }
+  const today = todayStr();
+  const cur   = state.gridTabStartDate || today;
+  const d     = new Date(cur + 'T00:00:00+09:00');
+  d.setDate(d.getDate() + delta);
+  const next = dateToStr(d);
+  state.gridTabStartDate = next < today ? today : next;
+  state.gridData = null;
+  renderContent();
+  loadGridData();
 }
 
 function setGridServiceType(type) {
@@ -1326,7 +1350,7 @@ async function loadGridData() {
   renderContent();
 
   try {
-    const result = await apiGet({ action: 'getGridData', startDate: todayStr(), days: 31 });
+    const result = await apiGet({ action: 'getGridData', startDate: state.gridTabStartDate || todayStr(), days: 31 });
     if (result.error) throw new Error(result.error);
 
     // ① スロットから開放セットを構築（範囲 → 30分ブロックに展開）
