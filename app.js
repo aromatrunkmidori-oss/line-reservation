@@ -719,11 +719,13 @@ async function loadGridAvailability() {
 
 function changeGrid(delta) {
   const today   = formatDateStr(new Date());
+  const maxD    = new Date(); maxD.setMonth(maxD.getMonth() + 1);
+  const maxDate = formatDateStr(maxD);
   const current = state.ui.gridStartDate || today;
   const d       = new Date(current + 'T00:00:00+09:00');
   d.setDate(d.getDate() + delta);
   const next = formatDateStr(d);
-  state.ui.gridStartDate    = next < today ? today : next;
+  state.ui.gridStartDate    = next < today ? today : next > maxDate ? maxDate : next;
   state.ui.gridAvailability = null;
   state.ui.gridCacheKey     = '';
   state.form.date           = '';
@@ -775,12 +777,16 @@ function renderDateTimeGrid() {
 
   const avail   = state.ui.gridAvailability;
   const today   = formatDateStr(new Date());
+  const maxD    = new Date(); maxD.setMonth(maxD.getMonth() + 1);
+  const maxDate = formatDateStr(maxD);
   const start   = state.ui.gridStartDate || today;
   const startMs = new Date(start + 'T00:00:00+09:00').getTime();
   const dates   = [];
   for (let i = 0; i < CUST_GRID_DAYS; i++) {
-    const d = new Date(startMs + i * 86400000);
-    dates.push(formatDateStr(d));
+    const d       = new Date(startMs + i * 86400000);
+    const dateStr = formatDateStr(d);
+    if (dateStr > maxDate) break;
+    dates.push(dateStr);
   }
 
   const selectedKey = state.form.date && state.form.timeSlot
@@ -854,12 +860,14 @@ function renderDateTimeGrid() {
   // ── ナビゲーション ──
   const prevDate     = formatDateStr(new Date(startMs - CUST_GRID_DAYS * 86400000));
   const prevDisabled = prevDate < today;
+  const nextDate     = formatDateStr(new Date(startMs + CUST_GRID_DAYS * 86400000));
+  const nextDisabled = nextDate > maxDate;
   const nav = `
     <div class="cg-nav">
       <button class="cg-nav-btn" onclick="changeGrid(-${CUST_GRID_DAYS})"
               ${prevDisabled ? 'disabled' : ''}>‹ 前の${CUST_GRID_DAYS}日</button>
-      <button class="cg-nav-btn" onclick="changeGrid(${CUST_GRID_DAYS})">
-        次の${CUST_GRID_DAYS}日 ›</button>
+      <button class="cg-nav-btn" onclick="changeGrid(${CUST_GRID_DAYS})"
+              ${nextDisabled ? 'disabled' : ''}>次の${CUST_GRID_DAYS}日 ›</button>
     </div>`;
 
   // ── 選択バナー ──
