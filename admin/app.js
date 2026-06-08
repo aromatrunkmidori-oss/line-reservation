@@ -172,6 +172,14 @@ function shiftDate(dateStr, days) {
   d.setDate(d.getDate() + days);
   return dateToStr(d);
 }
+// 00:00〜02:59 に開始する予約は前日の24:xx〜26:xx としてグリッドに配置する
+// （例: 2026-06-08 01:00〜02:00 → 2026-06-07 25:00〜26:00）
+function _normalizeMidnightRes(res) {
+  if (timeToMin(res.startTime) >= 3 * 60) return res;
+  const startMin = timeToMin(res.startTime) + 24 * 60;
+  const endMin   = timeToMin(res.endTime)   + 24 * 60;
+  return { ...res, date: shiftDate(res.date, -1), startTime: minutesToTimeStr(startMin), endTime: minutesToTimeStr(endMin) };
+}
 // gridTabStartDate から31日分の日付配列
 function getGridDates() {
   const start = state.gridTabStartDate || todayStr();
@@ -1367,14 +1375,16 @@ async function loadGridData() {
     });
 
     // ② 予約からマップを構築（開始〜終了の各ブロックにマッピング）
+    // 00:00〜02:59 開始の予約は前日の 24:xx〜26:xx にリマップして表示する
     const resMap = new Map();
     result.reservations.forEach(res => {
-      const start = timeToMin(res.startTime);
-      const end   = timeToMin(res.endTime);
+      const norm  = _normalizeMidnightRes(res);
+      const start = timeToMin(norm.startTime);
+      const end   = timeToMin(norm.endTime);
       for (let m = start; m < end; m += 30) {
         const t = minutesToTimeStr(m);
         if (GRID_TIMES.includes(t)) {
-          resMap.set(`${res.date}_${t}`, {
+          resMap.set(`${norm.date}_${t}`, {
             customerName: res.customerName,
             menuName:     res.menuName,
             serviceType:  res.serviceType,
@@ -1411,21 +1421,22 @@ async function loadGridData() {
 
     // a) 予約終了後バッファ・開始前バッファ（serviceTypeごとに来店60分・出張90分を適用）
     result.reservations.forEach(res => {
+      const norm         = _normalizeMidnightRes(res);
       const intervalMin  = res.serviceType === '来店' ? intervalMinVisit : intervalMinMobile;
-      const startMin     = timeToMin(res.startTime);
-      const endMin       = timeToMin(res.endTime);
+      const startMin     = timeToMin(norm.startTime);
+      const endMin       = timeToMin(norm.endTime);
       // 終了後バッファ（終了が30分境界でない場合も次の境界から正しくカバー）
       const postBufStart = Math.ceil(endMin / 30) * 30;
       for (let m = postBufStart; m < endMin + intervalMin; m += 30) {
         const t = minutesToTimeStr(m);
-        if (GRID_TIMES.includes(t)) intervalSet.add(`${res.date}_${t}`);
+        if (GRID_TIMES.includes(t)) intervalSet.add(`${norm.date}_${t}`);
       }
       // 開始前バッファ（予約ブロック自体は resMap が担当するので除く）
       for (let m = startMin - intervalMin; m < startMin; m += 30) {
         if (m < 0) continue;
         const t = minutesToTimeStr(m);
-        if (GRID_TIMES.includes(t) && !resMap.has(`${res.date}_${t}`)) {
-          intervalSet.add(`${res.date}_${t}`);
+        if (GRID_TIMES.includes(t) && !resMap.has(`${norm.date}_${t}`)) {
+          intervalSet.add(`${norm.date}_${t}`);
         }
       }
     });
@@ -2350,12 +2361,13 @@ function _parseBkGridDetail(result) {
 
   const resMap = new Map();
   (result.reservations || []).forEach(res => {
-    const start = timeToMin(res.startTime);
-    const end   = timeToMin(res.endTime);
+    const norm  = _normalizeMidnightRes(res);
+    const start = timeToMin(norm.startTime);
+    const end   = timeToMin(norm.endTime);
     for (let m = start; m < end; m += 30) {
       const t = minutesToTimeStr(m);
       if (GRID_TIMES.includes(t))
-        resMap.set(`${res.date}_${t}`, { customerName: res.customerName, serviceType: res.serviceType });
+        resMap.set(`${norm.date}_${t}`, { customerName: res.customerName, serviceType: res.serviceType });
     }
   });
 
@@ -2378,21 +2390,22 @@ function _parseBkGridDetail(result) {
   const intervalSet        = new Set();
 
   (result.reservations || []).forEach(res => {
+    const norm         = _normalizeMidnightRes(res);
     const intervalMin  = res.serviceType === '来店' ? intervalMinVisit : intervalMinMobile;
-    const startMin     = timeToMin(res.startTime);
-    const endMin       = timeToMin(res.endTime);
+    const startMin     = timeToMin(norm.startTime);
+    const endMin       = timeToMin(norm.endTime);
     // 終了後バッファ（終了が30分境界でない場合も次の境界から正しくカバー）
     const postBufStart = Math.ceil(endMin / 30) * 30;
     for (let m = postBufStart; m < endMin + intervalMin; m += 30) {
       const t = minutesToTimeStr(m);
-      if (GRID_TIMES.includes(t)) intervalSet.add(`${res.date}_${t}`);
+      if (GRID_TIMES.includes(t)) intervalSet.add(`${norm.date}_${t}`);
     }
     // 開始前バッファ（予約ブロック自体は resMap が担当するので除く）
     for (let m = startMin - intervalMin; m < startMin; m += 30) {
       if (m < 0) continue;
       const t = minutesToTimeStr(m);
-      if (GRID_TIMES.includes(t) && !resMap.has(`${res.date}_${t}`)) {
-        intervalSet.add(`${res.date}_${t}`);
+      if (GRID_TIMES.includes(t) && !resMap.has(`${norm.date}_${t}`)) {
+        intervalSet.add(`${norm.date}_${t}`);
       }
     }
   });
