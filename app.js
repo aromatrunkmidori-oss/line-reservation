@@ -372,6 +372,14 @@ function renderStep1() {
 }
 
 function selectServiceType(type) {
+  if (type === '出張') {
+    showVisitConsentModal();
+    return;
+  }
+  _applyServiceType(type);
+}
+
+function _applyServiceType(type) {
   state.form.serviceType = type;
   state.form.course      = '';
   state.form.duration    = null;
@@ -385,6 +393,75 @@ function selectServiceType(type) {
   _resetGrid();
   state.step = 2;
   render();
+}
+
+const VISIT_CONSENT_TEXT = `出張施術は、健全なリラクゼーションを目的としたサービスです。
+性的サービス、風俗的サービス、またはそれに類する行為は一切行っておりません。
+
+以下の行為は禁止いたします。
+
+・性的サービスの要求、性的な発言・接触・露出行為
+・施術内容を超えた過度な要求
+・暴言、威圧、脅迫、侮辱、差別的発言
+・スタッフへの身体的接触
+・無断での撮影、録音、録画
+・飲酒・泥酔状態での施術依頼
+・スタッフへの個人的な連絡先交換の要求
+・施術時間外の不当な拘束
+・その他、スタッフが危険または不安を感じる行為
+
+上記に該当する行為があった場合、施術開始前・施術中を問わず、直ちに施術を中止いたします。
+その場合、料金の返金はいたしかねます。また、今後のご利用をお断りし、悪質な場合には警察等の関係機関へ相談・通報することがあります。
+
+施術場所は、清潔かつ安全が確保された環境をご用意ください。
+不衛生な環境、第三者の介入、スタッフの安全が確保できない状況等がある場合には、施術をお断りすることがあります。`;
+
+function showVisitConsentModal() {
+  const checkSvg = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="2,7 6,11 12,3"/></svg>`;
+  const el = document.createElement('div');
+  el.className = 'consent-overlay';
+  el.id = 'consentModal';
+  el.innerHTML = `
+    <div class="consent-sheet">
+      <div class="consent-header">
+        <div class="consent-handle"></div>
+        <div class="consent-title">出張施術に関する注意事項</div>
+        <div class="consent-subtitle">ご予約の前に必ずお読みください</div>
+      </div>
+      <div class="consent-body">
+        <div class="consent-text">${VISIT_CONSENT_TEXT}</div>
+      </div>
+      <div class="consent-footer">
+        <div class="consent-check-row" id="consentCheckRow" onclick="toggleConsentCheck()">
+          <div class="consent-checkbox" id="consentCheckbox"></div>
+          <span class="consent-check-label">上記の出張施術に関する注意事項・禁止事項を確認し、同意します。</span>
+        </div>
+        <button class="btn btn-primary" id="consentConfirmBtn" disabled onclick="confirmVisitConsent()">同意して進む　›</button>
+        <button class="btn btn-ghost" onclick="closeConsentModal()">戻る</button>
+      </div>
+    </div>`;
+  document.body.appendChild(el);
+}
+
+function toggleConsentCheck() {
+  const row = document.getElementById('consentCheckRow');
+  const box = document.getElementById('consentCheckbox');
+  const btn = document.getElementById('consentConfirmBtn');
+  const checked = row.classList.toggle('checked');
+  box.innerHTML = checked
+    ? `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="2,7 6,11 12,3"/></svg>`
+    : '';
+  btn.disabled = !checked;
+}
+
+function confirmVisitConsent() {
+  closeConsentModal();
+  _applyServiceType('出張');
+}
+
+function closeConsentModal() {
+  const el = document.getElementById('consentModal');
+  if (el) el.remove();
 }
 
 // ============================================================
