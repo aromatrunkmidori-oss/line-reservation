@@ -153,6 +153,11 @@ const state = {
   customerSaving: false,
 };
 
+// カタカナ→ひらがな変換（検索正規化用）
+function _toHiragana(str) {
+  return str.replace(/[ァ-ヶ]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60));
+}
+
 // ============================================================
 // 日付ユーティリティ
 // ============================================================
@@ -1535,9 +1540,8 @@ async function handleSaveGrid() {
 
 function setCustomerSearch(q) {
   state.customerSearch = q;
-  renderContent();
-  const input = document.getElementById('ct-search-input');
-  if (input) { input.focus(); input.setSelectionRange(q.length, q.length); }
+  const listEl = document.getElementById('ct-list-container');
+  if (listEl) listEl.innerHTML = _buildCustomerCards();
 }
 
 async function loadCustomerList() {
@@ -1585,18 +1589,19 @@ function toggleCustomerEditMode() {
 
 async function saveCustomerInfo() {
   const c = (state.selectedCustomer || {}).customer || {};
-  const name    = (document.getElementById('ct-edit-name')    || {}).value || '';
-  const phone   = (document.getElementById('ct-edit-phone')   || {}).value || '';
-  const address = (document.getElementById('ct-edit-address') || {}).value || '';
-  const notes   = (document.getElementById('ct-edit-notes')   || {}).value || '';
+  const name     = (document.getElementById('ct-edit-name')     || {}).value || '';
+  const furigana = (document.getElementById('ct-edit-furigana') || {}).value || '';
+  const phone    = (document.getElementById('ct-edit-phone')    || {}).value || '';
+  const address  = (document.getElementById('ct-edit-address')  || {}).value || '';
+  const notes    = (document.getElementById('ct-edit-notes')    || {}).value || '';
 
   if (!name.trim()) { showToast('氏名を入力してください', true); return; }
 
   state.customerSaving = true;
   renderContent();
   try {
-    await apiPost({ action: 'updateCustomer', lineUserId: c.lineUserId, name: name.trim(), phone, address, notes });
-    state.selectedCustomer.customer = Object.assign({}, c, { name: name.trim(), phone, address, notes });
+    await apiPost({ action: 'updateCustomer', lineUserId: c.lineUserId, name: name.trim(), furigana: furigana.trim(), phone, address, notes });
+    state.selectedCustomer.customer = Object.assign({}, c, { name: name.trim(), furigana: furigana.trim(), phone, address, notes });
     state.customerEditMode = false;
     if (state.customerList.length > 0) loadCustomerList();
   } catch(e) {
@@ -1668,20 +1673,28 @@ function renderCustomersTab() {
              oninput="setCustomerSearch(this.value)">
     </div>`;
 
+  return custHeader + `<div class="ct-list" id="ct-list-container">${_buildCustomerCards()}</div>`;
+}
+
+function _buildCustomerCards() {
   if (state.customerList.length === 0) {
-    return custHeader + `<div class="empty-state">まだ顧客データがありません</div>`;
+    return `<div class="empty-state">まだ顧客データがありません</div>`;
   }
 
-  const q = state.customerSearch.trim().toLowerCase();
+  const q  = _toHiragana(state.customerSearch.trim().toLowerCase());
   const filtered = q
-    ? state.customerList.filter(c => (c.name || '').toLowerCase().includes(q))
+    ? state.customerList.filter(c => {
+        const name     = _toHiragana((c.name     || '').toLowerCase());
+        const furigana = _toHiragana((c.furigana || '').toLowerCase());
+        return name.includes(q) || furigana.includes(q);
+      })
     : state.customerList;
 
   if (filtered.length === 0) {
-    return custHeader + `<div class="empty-state">「${_bkEsc(state.customerSearch)}」に一致する顧客が見つかりません</div>`;
+    return `<div class="empty-state">「${_bkEsc(state.customerSearch)}」に一致する顧客が見つかりません</div>`;
   }
 
-  const cards = filtered.map(c => {
+  return filtered.map(c => {
     const prevBadge = c.lastTreatmentServiceType === '来店' ? 'badge-visit' : 'badge-mobile';
     const prevSnip = c.lastTreatmentDate
       ? `<div class="ct-card-mid">
@@ -1710,8 +1723,6 @@ function renderCustomersTab() {
         ${memoSnip}
       </div>`;
   }).join('');
-
-  return custHeader + `<div class="ct-list">${cards}</div>`;
 }
 
 // ── 顧客詳細レンダリング ──
@@ -1732,6 +1743,10 @@ function _renderCustomerDetail() {
           <div class="ct-edit-row">
             <label class="ct-edit-label">氏名 <span style="color:#c62828">*</span></label>
             <input class="ct-edit-input" id="ct-edit-name" type="text" value="${_bkEsc(c.name || '')}" placeholder="氏名">
+          </div>
+          <div class="ct-edit-row">
+            <label class="ct-edit-label">ふりがな</label>
+            <input class="ct-edit-input" id="ct-edit-furigana" type="text" value="${_bkEsc(c.furigana || '')}" placeholder="たなか はなこ">
           </div>
           <div class="ct-edit-row">
             <label class="ct-edit-label">電話</label>
