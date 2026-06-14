@@ -1653,9 +1653,15 @@ function renderCustomersTab() {
   }
 
   const cards = state.customerList.map(c => {
-    const badge   = c.latestServiceType === '来店' ? 'badge-visit' : 'badge-mobile';
+    const prevBadge = c.lastTreatmentServiceType === '来店' ? 'badge-visit' : 'badge-mobile';
+    const prevSnip = c.lastTreatmentDate
+      ? `<div class="ct-card-mid">
+          <span class="service-badge ${prevBadge}">${c.lastTreatmentServiceType}</span>
+          <span class="ct-latest-date">前回　${formatDateLabel(c.lastTreatmentDate)}</span>
+        </div>`
+      : '';
     const nextSnip = c.nextDate
-      ? `<div class="ct-card-next">次回　${formatDateLabel(c.nextDate)}　${c.nextStartTime}〜　${_bkEsc(c.nextMenu)}（${c.nextDuration}分）</div>`
+      ? `<div class="ct-card-next">次回　${formatDateLabel(c.nextDate)}　${c.nextStartTime}〜</div>`
       : '';
     const addrSnip = c.address
       ? `<div class="ct-card-address">${_bkEsc(c.address)}</div>`
@@ -1669,11 +1675,7 @@ function renderCustomersTab() {
           <span class="ct-name">${_bkEsc(c.name)}</span>
           <span class="ct-visit-count">${c.visitCount}回</span>
         </div>
-        <div class="ct-card-mid">
-          <span class="service-badge ${badge}">${c.latestServiceType}</span>
-          <span class="ct-latest-date">${formatDateLabel(c.latestDate)}</span>
-          <span class="ct-latest-menu">${_bkEsc(c.latestMenu)}（${c.latestDuration}分）</span>
-        </div>
+        ${prevSnip}
         ${nextSnip}
         ${addrSnip}
         ${memoSnip}
