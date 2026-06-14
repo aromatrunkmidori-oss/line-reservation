@@ -1654,6 +1654,12 @@ function renderCustomersTab() {
 
   const cards = state.customerList.map(c => {
     const badge   = c.latestServiceType === '来店' ? 'badge-visit' : 'badge-mobile';
+    const nextSnip = c.nextDate
+      ? `<div class="ct-card-next">次回　${formatDateLabel(c.nextDate)}　${c.nextStartTime}〜　${_bkEsc(c.nextMenu)}（${c.nextDuration}分）</div>`
+      : '';
+    const addrSnip = c.address
+      ? `<div class="ct-card-address">${_bkEsc(c.address)}</div>`
+      : '';
     const memoSnip = c.latestMemo
       ? `<div class="ct-card-memo">${_bkEsc(c.latestMemo.slice(0, 40))}${c.latestMemo.length > 40 ? '…' : ''}</div>`
       : '';
@@ -1668,6 +1674,8 @@ function renderCustomersTab() {
           <span class="ct-latest-date">${formatDateLabel(c.latestDate)}</span>
           <span class="ct-latest-menu">${_bkEsc(c.latestMenu)}（${c.latestDuration}分）</span>
         </div>
+        ${nextSnip}
+        ${addrSnip}
         ${memoSnip}
       </div>`;
   }).join('');
