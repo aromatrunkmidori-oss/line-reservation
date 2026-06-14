@@ -1608,6 +1608,11 @@ async function saveKarteMemo(karteId) {
   try {
     const result = await apiPost({ action: 'saveKarte', karteId, treatmentContent: memo });
     if (result.error) throw new Error(result.error);
+    // re-render前にstateを更新して旧テキストが再表示されないようにする
+    if (state.selectedCustomer && state.selectedCustomer.history) {
+      const item = state.selectedCustomer.history.find(r => r.karteId === karteId);
+      if (item) item.memo = memo;
+    }
     state.karteSaving = Object.assign({}, state.karteSaving, { [karteId]: 'saved' });
     _updateMemoBtn(karteId, '保存済み ✓');
     // 顧客一覧の最新メモも更新（バックグラウンド）
