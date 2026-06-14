@@ -145,6 +145,7 @@ const state = {
   // 顧客カルテタブ
   customerList: [],
   customerLoading: false,
+  customerSearch: '',
   selectedCustomer: null,          // { customer, history }
   selectedCustomerLoading: false,
   karteSaving: {},                 // { karteId: 'saving'|'saved'|null }
@@ -329,6 +330,7 @@ function renderContent() {
 function switchTab(tab) {
   state.tab = tab;
   state.selectedCustomer = null;
+  state.customerSearch   = '';
   renderMain();
   if      (tab === 'grid' && !state.gridData) loadGridData();
   else if (tab === 'grid')         renderContent();
@@ -1531,6 +1533,13 @@ async function handleSaveGrid() {
 // 顧客カルテタブ
 // ============================================================
 
+function setCustomerSearch(q) {
+  state.customerSearch = q;
+  renderContent();
+  const input = document.getElementById('ct-search-input');
+  if (input) { input.focus(); input.setSelectionRange(q.length, q.length); }
+}
+
 async function loadCustomerList() {
   if (state.customerLoading) return;
   state.customerLoading = true;
@@ -1651,13 +1660,28 @@ function renderCustomersTab() {
     </div>`;
   }
 
-  const custHeader = `<div class="tab-header"><span class="tab-header-title">顧客</span><button class="refresh-btn" onclick="refreshCurrentTab()">↻ 更新</button></div>`;
+  const custHeader = `
+    <div class="tab-header"><span class="tab-header-title">顧客</span><button class="refresh-btn" onclick="refreshCurrentTab()">↻ 更新</button></div>
+    <div class="ct-search-bar">
+      <input id="ct-search-input" class="ct-search-input" type="search" placeholder="名前で検索..."
+             value="${_bkEsc(state.customerSearch)}"
+             oninput="setCustomerSearch(this.value)">
+    </div>`;
 
   if (state.customerList.length === 0) {
     return custHeader + `<div class="empty-state">まだ顧客データがありません</div>`;
   }
 
-  const cards = state.customerList.map(c => {
+  const q = state.customerSearch.trim().toLowerCase();
+  const filtered = q
+    ? state.customerList.filter(c => (c.name || '').toLowerCase().includes(q))
+    : state.customerList;
+
+  if (filtered.length === 0) {
+    return custHeader + `<div class="empty-state">「${_bkEsc(state.customerSearch)}」に一致する顧客が見つかりません</div>`;
+  }
+
+  const cards = filtered.map(c => {
     const prevBadge = c.lastTreatmentServiceType === '来店' ? 'badge-visit' : 'badge-mobile';
     const prevSnip = c.lastTreatmentDate
       ? `<div class="ct-card-mid">
