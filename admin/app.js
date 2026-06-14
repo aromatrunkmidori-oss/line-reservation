@@ -1686,7 +1686,7 @@ function _buildCustomerCards() {
     ? state.customerList.filter(c => {
         const name     = _toHiragana((c.name     || '').toLowerCase());
         const furigana = _toHiragana((c.furigana || '').toLowerCase());
-        return name.includes(q) || furigana.includes(q);
+        return name.startsWith(q) || furigana.startsWith(q);
       })
     : state.customerList;
 
