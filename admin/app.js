@@ -151,6 +151,15 @@ const state = {
   karteSaving: {},                 // { karteId: 'saving'|'saved'|null }
   customerEditMode: false,
   customerSaving: false,
+  // 売上タブ
+  sales: {
+    year:           new Date().getFullYear(),
+    monthlySummary: null,  // { year, months: [{month,count,total,visitTotal,mobileTotal,missingCount}] }
+    selectedMonth:  null,  // 'yyyy-MM'。null の場合は現在月を初期選択
+    monthDetail:    null,  // { menuBreakdown, serviceTypeBreakdown, listData }
+    loading:        false,
+    monthLoading:   false,
+  },
 };
 
 // カタカナ→ひらがな変換（検索正規化用）
@@ -288,6 +297,12 @@ const ICONS = {
     <path d="M23 21v-2a4 4 0 00-3-3.87"/>
     <path d="M16 3.13a4 4 0 010 7.75"/>
   </svg>`,
+  sales: `<svg class="admin-tab-icon" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <line x1="12" y1="20" x2="12" y2="10"/>
+    <line x1="18" y1="20" x2="18" y2="4"/>
+    <line x1="6" y1="20" x2="6" y2="16"/>
+  </svg>`,
 };
 
 // ============================================================
@@ -318,6 +333,10 @@ function renderMain() {
               onclick="switchTab('customers')">
         ${ICONS.customers}顧客
       </button>
+      <button class="admin-tab-btn ${state.tab === 'sales' ? 'active' : ''}"
+              onclick="switchTab('sales')">
+        ${ICONS.sales}売上
+      </button>
     </nav>`;
   renderContent();
 }
@@ -329,7 +348,9 @@ function renderContent() {
   else if (state.tab === 'reservations') el.innerHTML = renderReservationsTab();
   else if (state.tab === 'grid')         el.innerHTML = renderGridTab();
   else if (state.tab === 'customers')    el.innerHTML = renderCustomersTab();
+  else if (state.tab === 'sales')        el.innerHTML = renderSalesTab();
   else                                   el.innerHTML = renderBookingTab();
+  if (!_reschedule && state.tab === 'sales') _renderSalesCharts();
 }
 
 function switchTab(tab) {
@@ -342,6 +363,7 @@ function switchTab(tab) {
   else if (tab === 'reservations') loadFutureReservations();
   else if (tab === 'booking')      loadBookingMenus();
   else if (tab === 'customers')    loadCustomerList();
+  else if (tab === 'sales')        loadSalesYear(state.sales.year);
 }
 
 function refreshCurrentTab() {
@@ -357,6 +379,8 @@ function refreshCurrentTab() {
     state.selectedCustomer = null;
     state.customerLoading  = false;
     loadCustomerList();
+  } else if (state.tab === 'sales') {
+    loadSalesYear(state.sales.year);
   }
 }
 
@@ -1790,6 +1814,13 @@ function _renderCustomerDetail() {
                 onclick="saveKarteMemo('${_bkEsc(r.karteId)}')">${btnText}</button>
       </div>` : `<p class="ct-no-karte">カルテ未作成</p>`;
 
+    const hasPrice  = r.price !== '' && r.price !== null && r.price !== undefined;
+    const priceArg  = hasPrice ? Number(r.price) : "''";
+    const priceHtml = hasPrice
+      ? `<span class="sales-price">¥${Number(r.price).toLocaleString()}</span>
+         <span class="price-badge ${r.priceType === 'manual' ? 'price-badge-manual' : 'price-badge-auto'}">${r.priceType === 'manual' ? '手入力' : '自動'}</span>`
+      : `<span class="price-missing">金額未入力</span>`;
+
     return `
       <div class="ct-history-item${isCancelled ? ' ct-cancelled' : ''}">
         <div class="ct-history-header">
@@ -1799,6 +1830,10 @@ function _renderCustomerDetail() {
           ${isCancelled ? '<span class="badge-cancelled">キャンセル済</span>' : ''}
         </div>
         <div class="ct-history-menu">${_bkEsc(r.menuName)}（${r.duration}分）</div>
+        <div class="ct-history-price-row">
+          ${priceHtml}
+          <button class="sales-edit-btn" onclick="openPriceEditModal('${r.reservationId}', ${priceArg}, 'customer')">${hasPrice ? '編集' : '入力'}</button>
+        </div>
         ${memoSection}
       </div>`;
   }).join('');
@@ -2595,6 +2630,302 @@ async function bkSubmit() {
 function bkReset() {
   _bkForm = _defaultBkForm();
   renderContent();
+}
+
+// ============================================================
+// 売上タブ
+// ============================================================
+const SALES_MONTH_NAMES = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+let _salesMonthlyChart   = null;
+let _salesBreakdownChart = null;
+let _priceEditContext    = null; // 'sales' | 'customer'
+
+function _ymStr(year, month) {
+  return `${year}-${String(month).padStart(2, '0')}`;
+}
+function _currentYearMonth() {
+  const d = new Date();
+  return _ymStr(d.getFullYear(), d.getMonth() + 1);
+}
+function _lastDayOfMonth(yearMonth) {
+  const [y, m] = yearMonth.split('-').map(Number);
+  return new Date(y, m, 0).getDate();
+}
+
+function renderSalesTab() {
+  const s = state.sales;
+  if (s.loading) {
+    return `<div style="display:flex;flex-direction:column;align-items:center;padding:64px 0;gap:16px;">
+      <div class="spinner"></div>
+      <span style="font-size:13px;color:var(--text-secondary);">売上データを読み込み中...</span>
+    </div>`;
+  }
+
+  const months      = (s.monthlySummary && s.monthlySummary.months) || [];
+  const yearTotal    = months.reduce((sum, m) => sum + m.total, 0);
+  const yearMissing  = months.reduce((sum, m) => sum + m.missingCount, 0);
+  const selectedMonth = s.selectedMonth || _currentYearMonth();
+
+  const header = `
+    <div class="tab-header"><span class="tab-header-title">売上</span><button class="refresh-btn" onclick="refreshCurrentTab()">↻ 更新</button></div>
+    <div class="date-nav" style="position:static;">
+      <button class="date-nav-btn" onclick="changeSalesYear(-1)">‹</button>
+      <span class="date-nav-label">${s.year}年</span>
+      <button class="date-nav-btn" onclick="changeSalesYear(1)">›</button>
+    </div>
+    <div class="sales-summary-row">
+      <div class="sales-summary-card">
+        <div class="sales-summary-label">年間売上（実施済み分）</div>
+        <div class="sales-summary-value">¥${yearTotal.toLocaleString()}</div>
+      </div>
+      ${yearMissing > 0 ? `
+      <div class="sales-summary-card sales-summary-warn">
+        <div class="sales-summary-label">金額未入力</div>
+        <div class="sales-summary-value">${yearMissing}件</div>
+      </div>` : ''}
+    </div>
+    <div class="sales-chart-wrap"><canvas id="sales-monthly-chart" height="180"></canvas></div>
+    <div class="sales-month-picker">
+      ${months.map(m => `
+        <button class="sales-month-pill ${selectedMonth === _ymStr(s.year, m.month) ? 'active' : ''}"
+                onclick="selectSalesMonth('${_ymStr(s.year, m.month)}')">${SALES_MONTH_NAMES[m.month - 1]}</button>
+      `).join('')}
+    </div>
+    ${renderSalesMonthDetail()}
+  `;
+  return header;
+}
+
+function renderSalesMonthDetail() {
+  const s = state.sales;
+  if (s.monthLoading) {
+    return `<div style="display:flex;flex-direction:column;align-items:center;padding:32px 0;gap:12px;">
+      <div class="spinner"></div>
+    </div>`;
+  }
+  const detail = s.monthDetail;
+  if (!detail) return '';
+
+  const list = detail.listData || [];
+  const listHtml = list.length === 0
+    ? `<div class="empty-state">この月の実施済み予約はありません</div>`
+    : list.map(r => {
+        const badgeCls  = r.serviceType === '来店' ? 'badge-visit' : 'badge-mobile';
+        const hasPrice  = r.price !== '' && r.price !== null && r.price !== undefined;
+        const priceArg  = hasPrice ? Number(r.price) : "''";
+        const priceHtml = hasPrice
+          ? `<span class="sales-price">¥${Number(r.price).toLocaleString()}</span>
+             <span class="price-badge ${r.priceType === 'manual' ? 'price-badge-manual' : 'price-badge-auto'}">${r.priceType === 'manual' ? '手入力' : '自動'}</span>`
+          : `<span class="price-missing">金額未入力</span>`;
+        return `
+          <div class="sales-list-item">
+            <div class="sales-list-main">
+              <span class="sales-list-date">${formatDateLabel(r.date)}</span>
+              <span class="ct-history-time">${r.startTime}〜${r.endTime}</span>
+              <span class="service-badge ${badgeCls}">${r.serviceType}</span>
+            </div>
+            <div class="sales-list-sub">
+              <span class="sales-list-name">${_bkEsc(r.customerName)}</span>
+              <span class="sales-list-menu">${_bkEsc(r.menuName)}</span>
+            </div>
+            <div class="sales-list-price-row">
+              ${priceHtml}
+              <button class="sales-edit-btn" onclick="openPriceEditModal('${r.reservationId}', ${priceArg}, 'sales')">${hasPrice ? '編集' : '入力'}</button>
+            </div>
+          </div>`;
+      }).join('');
+
+  return `
+    <div class="sales-chart-wrap"><canvas id="sales-breakdown-chart" height="180"></canvas></div>
+    <div class="ct-history-label">予約詳細（${list.length}件）</div>
+    <div class="sales-list">${listHtml}</div>
+  `;
+}
+
+// Chart.js は再描画のたびに canvas が作り直されるため、既存インスタンスを破棄してから再生成する
+function _renderSalesCharts() {
+  if (typeof Chart === 'undefined') return;
+
+  const s = state.sales;
+  const monthlyCanvas = document.getElementById('sales-monthly-chart');
+  if (monthlyCanvas && s.monthlySummary) {
+    if (_salesMonthlyChart) _salesMonthlyChart.destroy();
+    const months = s.monthlySummary.months;
+    _salesMonthlyChart = new Chart(monthlyCanvas, {
+      type: 'bar',
+      data: {
+        labels: months.map(m => SALES_MONTH_NAMES[m.month - 1]),
+        datasets: [{
+          label: '売上',
+          data: months.map(m => m.total),
+          backgroundColor: 'rgba(46,125,50,0.55)',
+        }],
+      },
+      options: {
+        plugins: { legend: { display: false } },
+        scales: { y: { ticks: { callback: v => '¥' + v.toLocaleString() } } },
+      },
+    });
+  }
+
+  const breakdownCanvas = document.getElementById('sales-breakdown-chart');
+  if (breakdownCanvas && s.monthDetail) {
+    if (_salesBreakdownChart) _salesBreakdownChart.destroy();
+    const breakdown = s.monthDetail.menuBreakdown || [];
+    if (breakdown.length > 0) {
+      _salesBreakdownChart = new Chart(breakdownCanvas, {
+        type: 'doughnut',
+        data: {
+          labels: breakdown.map(b => b.menuName),
+          datasets: [{
+            data: breakdown.map(b => b.total),
+            backgroundColor: ['#2E7D32','#E65100','#1565C0','#6A1B9A','#C62828','#00695C','#AD8B00'],
+          }],
+        },
+        options: { plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } } },
+      });
+    }
+  }
+}
+
+async function loadSalesYear(year) {
+  state.sales.year    = year;
+  state.sales.loading = true;
+  renderContent();
+  try {
+    const result = await apiGet({ action: 'getSalesMonthlySummary', year });
+    state.sales.monthlySummary = result;
+  } catch (e) {
+    state.sales.monthlySummary = null;
+    showToast('売上データの取得に失敗しました', true);
+  }
+  state.sales.loading = false;
+  renderContent();
+
+  // 年を切り替えても同じ「月」のまま追従させる（初回は現在月）
+  const baseMonth = state.sales.selectedMonth
+    ? Number(state.sales.selectedMonth.split('-')[1])
+    : new Date().getMonth() + 1;
+  loadSalesMonthDetail(_ymStr(year, baseMonth));
+}
+
+async function loadSalesMonthDetail(yearMonth) {
+  state.sales.selectedMonth = yearMonth;
+  state.sales.monthLoading  = true;
+  renderContent();
+
+  const startDate = yearMonth + '-01';
+  const endDate   = yearMonth + '-' + String(_lastDayOfMonth(yearMonth)).padStart(2, '0');
+
+  try {
+    const [breakdown, list] = await Promise.all([
+      apiGet({ action: 'getSalesMenuBreakdown', yearMonth }),
+      apiGet({ action: 'getSalesList', startDate, endDate }),
+    ]);
+    const today = todayStr();
+    state.sales.monthDetail = {
+      menuBreakdown: breakdown.menuBreakdown || [],
+      serviceTypeBreakdown: breakdown.serviceTypeBreakdown || {},
+      listData: (list || []).filter(r => r.date <= today).sort((a, b) => b.date.localeCompare(a.date) || b.startTime.localeCompare(a.startTime)),
+    };
+  } catch (e) {
+    state.sales.monthDetail = null;
+    showToast('売上詳細の取得に失敗しました', true);
+  }
+  state.sales.monthLoading = false;
+  renderContent();
+}
+
+function changeSalesYear(diff) {
+  loadSalesYear(state.sales.year + diff);
+}
+
+function selectSalesMonth(yearMonth) {
+  loadSalesMonthDetail(yearMonth);
+}
+
+// ============================================================
+// 金額の手動入力・編集モーダル（売上タブ・顧客タブ共通）
+// ============================================================
+function openPriceEditModal(reservationId, currentPrice, context) {
+  _priceEditContext = context;
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.id = 'price-modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal-sheet" id="price-modal-sheet">
+      <div class="modal-handle"></div>
+      <div class="modal-header">
+        <span class="modal-title">金額を入力</span>
+        <button class="modal-close" onclick="closePriceEditModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="bk-field">
+          <label class="bk-label">金額（円）</label>
+          <input class="bk-input" id="price-modal-input" type="number" inputmode="numeric" min="0" step="100"
+                 value="${currentPrice === '' ? '' : currentPrice}" placeholder="例：13000">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-confirm-reschedule" id="price-modal-save-btn"
+                onclick="submitPriceEdit('${reservationId}')">保存する</button>
+      </div>
+    </div>`;
+
+  overlay.addEventListener('click', e => {
+    if (e.target === overlay) closePriceEditModal();
+  });
+
+  document.body.appendChild(overlay);
+  requestAnimationFrame(() => {
+    overlay.classList.add('visible');
+    const sheet = document.getElementById('price-modal-sheet');
+    if (sheet) sheet.classList.add('visible');
+    const input = document.getElementById('price-modal-input');
+    if (input) input.focus();
+  });
+}
+
+function closePriceEditModal() {
+  const overlay = document.getElementById('price-modal-overlay');
+  if (!overlay) return;
+  overlay.classList.remove('visible');
+  const sheet = document.getElementById('price-modal-sheet');
+  if (sheet) sheet.classList.remove('visible');
+  setTimeout(() => overlay.remove(), 300);
+}
+
+async function submitPriceEdit(reservationId) {
+  const input = document.getElementById('price-modal-input');
+  const btn   = document.getElementById('price-modal-save-btn');
+  if (!input) return;
+
+  const amount = Number(input.value);
+  if (input.value === '' || !Number.isFinite(amount) || amount < 0) {
+    showToast('金額を正しく入力してください', true);
+    return;
+  }
+
+  if (btn) { btn.disabled = true; btn.textContent = '保存中...'; }
+  try {
+    const result = await apiPost({ action: 'updateReservationPrice', reservationId, amount });
+    if (result.error) throw new Error(result.error);
+    showToast('金額を保存しました');
+    closePriceEditModal();
+
+    if (_priceEditContext === 'customer' && state.selectedCustomer && state.selectedCustomer.history) {
+      const item = state.selectedCustomer.history.find(r => r.reservationId === reservationId);
+      if (item) { item.price = amount; item.priceType = 'manual'; }
+      renderContent();
+    } else if (_priceEditContext === 'sales') {
+      // 編集により月次集計・内訳も変わるため、サーバーから再取得する
+      loadSalesYear(state.sales.year);
+    }
+  } catch (e) {
+    showToast('保存に失敗しました: ' + e.message, true);
+    if (btn) { btn.disabled = false; btn.textContent = '保存する'; }
+  }
 }
 
 // ============================================================

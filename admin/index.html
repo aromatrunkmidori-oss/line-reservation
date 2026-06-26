@@ -1419,6 +1419,105 @@
       justify-content: flex-end;
     }
     .ct-edit-actions .btn { width: auto; padding: 10px 20px; margin-top: 0; }
+
+    /* ── 売上タブ ── */
+    .sales-summary-row {
+      display: flex;
+      gap: 10px;
+      padding: 4px 16px 12px;
+    }
+    .sales-summary-card {
+      flex: 1;
+      background: var(--bg-card);
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius);
+      padding: 12px 14px;
+      box-shadow: var(--shadow-sm);
+    }
+    .sales-summary-card.sales-summary-warn {
+      background: #FFF3E0;
+      border-color: #FFE0B2;
+    }
+    .sales-summary-label { font-size: 11px; color: var(--text-secondary); margin-bottom: 4px; }
+    .sales-summary-value { font-size: 19px; font-weight: 700; color: var(--text-primary); }
+    .sales-summary-warn .sales-summary-value { color: #E65100; }
+    .sales-chart-wrap {
+      padding: 8px 16px 16px;
+      background: var(--bg-card);
+      border-bottom: 1px solid var(--border-light);
+    }
+    .sales-month-picker {
+      display: flex;
+      gap: 6px;
+      overflow-x: auto;
+      padding: 10px 16px;
+      -webkit-overflow-scrolling: touch;
+    }
+    .sales-month-pill {
+      flex-shrink: 0;
+      padding: 6px 14px;
+      background: var(--bg);
+      border: 1.5px solid var(--border);
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .sales-month-pill.active {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: #fff;
+    }
+    .sales-list { padding: 0 16px 80px; display: flex; flex-direction: column; gap: 10px; }
+    .sales-list-item {
+      background: var(--bg-card);
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius);
+      padding: 12px 14px;
+      box-shadow: var(--shadow-sm);
+    }
+    .sales-list-main { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
+    .sales-list-date { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+    .sales-list-sub { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+    .sales-list-name { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+    .sales-list-menu { font-size: 12px; color: var(--text-secondary); }
+    .sales-list-price-row { display: flex; align-items: center; gap: 8px; }
+    .sales-price { font-size: 15px; font-weight: 700; color: var(--text-primary); }
+    .price-badge {
+      font-size: 10px;
+      font-weight: 600;
+      padding: 1px 7px;
+      border-radius: 10px;
+      white-space: nowrap;
+    }
+    .price-badge-auto   { background: #E8F5E9; color: #2E7D32; }
+    .price-badge-manual { background: #E3F2FD; color: #1565C0; }
+    .price-missing {
+      font-size: 13px;
+      font-weight: 600;
+      color: #C62828;
+    }
+    .sales-edit-btn {
+      margin-left: auto;
+      background: none;
+      border: 1px solid var(--primary);
+      color: var(--primary);
+      border-radius: var(--radius-sm);
+      padding: 4px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .sales-edit-btn:active { opacity: .7; }
+    .ct-history-price-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
   </style>
 </head>
 <body>
@@ -1431,6 +1530,9 @@
 
   <!-- LIFF SDK（本番用） -->
   <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+
+  <!-- 売上タブのグラフ表示用 -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
   <!-- LIFF モック（ローカルテスト用）
   <script>
@@ -1448,6 +1550,6 @@
   </script>
   -->
 
-  <script src="app.js?v=20260530c"></script>
+  <script src="app.js?v=20260626a"></script>
 </body>
 </html>
