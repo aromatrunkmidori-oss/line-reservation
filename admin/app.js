@@ -156,7 +156,7 @@ const state = {
     year:           new Date().getFullYear(),
     monthlySummary: null,  // { year, months: [{month,count,total,visitTotal,mobileTotal,missingCount}] }
     selectedMonth:  null,  // 'yyyy-MM'。null の場合は現在月を初期選択
-    monthDetail:    null,  // { menuBreakdown, serviceTypeBreakdown, listData }
+    monthDetail:    null,  // { listData }
     loading:        false,
     monthLoading:   false,
   },
@@ -1814,8 +1814,9 @@ function _renderCustomerDetail() {
                 onclick="saveKarteMemo('${_bkEsc(r.karteId)}')">${btnText}</button>
       </div>` : `<p class="ct-no-karte">カルテ未作成</p>`;
 
-    const hasPrice  = r.price !== '' && r.price !== null && r.price !== undefined;
-    const priceArg  = hasPrice ? Number(r.price) : "''";
+    const hasPrice   = r.price !== '' && r.price !== null && r.price !== undefined;
+    const priceArg   = hasPrice ? Number(r.price) : "''";
+    const paymentArg = r.paymentMethod ? `'${r.paymentMethod}'` : "''";
     const priceHtml = hasPrice
       ? `<span class="sales-price">¥${Number(r.price).toLocaleString()}</span>
          <span class="price-badge ${r.priceType === 'manual' ? 'price-badge-manual' : 'price-badge-auto'}">${r.priceType === 'manual' ? '手入力' : '自動'}</span>`
@@ -1832,7 +1833,8 @@ function _renderCustomerDetail() {
         <div class="ct-history-menu">${_bkEsc(r.menuName)}（${r.duration}分）</div>
         <div class="ct-history-price-row">
           ${priceHtml}
-          <button class="sales-edit-btn" onclick="openPriceEditModal('${r.reservationId}', ${priceArg}, 'customer')">${hasPrice ? '編集' : '入力'}</button>
+          ${_paymentBadgeHtml(r.paymentMethod)}
+          <button class="sales-edit-btn" onclick="openPriceEditModal('${r.reservationId}', ${priceArg}, 'customer', ${paymentArg})">${hasPrice ? '編集' : '入力'}</button>
         </div>
         ${memoSection}
       </div>`;
@@ -2636,9 +2638,9 @@ function bkReset() {
 // 売上タブ
 // ============================================================
 const SALES_MONTH_NAMES = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
-let _salesMonthlyChart   = null;
-let _salesBreakdownChart = null;
-let _priceEditContext    = null; // 'sales' | 'customer'
+const PAYMENT_METHODS   = ['現金', 'クレジットカード', 'PayPay(TRUNK)', 'PayPay(MIDORI)'];
+let _salesMonthlyChart = null;
+let _priceEditContext  = null; // 'sales' | 'customer'
 
 function _ymStr(year, month) {
   return `${year}-${String(month).padStart(2, '0')}`;
@@ -2661,10 +2663,10 @@ function renderSalesTab() {
     </div>`;
   }
 
-  const months      = (s.monthlySummary && s.monthlySummary.months) || [];
-  const yearTotal    = months.reduce((sum, m) => sum + m.total, 0);
-  const yearMissing  = months.reduce((sum, m) => sum + m.missingCount, 0);
-  const selectedMonth = s.selectedMonth || _currentYearMonth();
+  const months         = (s.monthlySummary && s.monthlySummary.months) || [];
+  const selectedMonth  = s.selectedMonth || _currentYearMonth();
+  const selectedMonthNum = Number(selectedMonth.split('-')[1]);
+  const monthBucket    = months.find(m => m.month === selectedMonthNum) || { total: 0, missingCount: 0 };
 
   const header = `
     <div class="tab-header"><span class="tab-header-title">売上</span><button class="refresh-btn" onclick="refreshCurrentTab()">↻ 更新</button></div>
@@ -2675,13 +2677,13 @@ function renderSalesTab() {
     </div>
     <div class="sales-summary-row">
       <div class="sales-summary-card">
-        <div class="sales-summary-label">年間売上（実施済み分）</div>
-        <div class="sales-summary-value">¥${yearTotal.toLocaleString()}</div>
+        <div class="sales-summary-label">${SALES_MONTH_NAMES[selectedMonthNum - 1]}の売上（実施済み分）</div>
+        <div class="sales-summary-value">¥${monthBucket.total.toLocaleString()}</div>
       </div>
-      ${yearMissing > 0 ? `
+      ${monthBucket.missingCount > 0 ? `
       <div class="sales-summary-card sales-summary-warn">
         <div class="sales-summary-label">金額未入力</div>
-        <div class="sales-summary-value">${yearMissing}件</div>
+        <div class="sales-summary-value">${monthBucket.missingCount}件</div>
       </div>` : ''}
     </div>
     <div class="sales-chart-wrap"><canvas id="sales-monthly-chart" height="180"></canvas></div>
@@ -2710,9 +2712,10 @@ function renderSalesMonthDetail() {
   const listHtml = list.length === 0
     ? `<div class="empty-state">この月の実施済み予約はありません</div>`
     : list.map(r => {
-        const badgeCls  = r.serviceType === '来店' ? 'badge-visit' : 'badge-mobile';
-        const hasPrice  = r.price !== '' && r.price !== null && r.price !== undefined;
-        const priceArg  = hasPrice ? Number(r.price) : "''";
+        const badgeCls    = r.serviceType === '来店' ? 'badge-visit' : 'badge-mobile';
+        const hasPrice    = r.price !== '' && r.price !== null && r.price !== undefined;
+        const priceArg    = hasPrice ? Number(r.price) : "''";
+        const paymentArg  = r.paymentMethod ? `'${r.paymentMethod}'` : "''";
         const priceHtml = hasPrice
           ? `<span class="sales-price">¥${Number(r.price).toLocaleString()}</span>
              <span class="price-badge ${r.priceType === 'manual' ? 'price-badge-manual' : 'price-badge-auto'}">${r.priceType === 'manual' ? '手入力' : '自動'}</span>`
@@ -2730,16 +2733,20 @@ function renderSalesMonthDetail() {
             </div>
             <div class="sales-list-price-row">
               ${priceHtml}
-              <button class="sales-edit-btn" onclick="openPriceEditModal('${r.reservationId}', ${priceArg}, 'sales')">${hasPrice ? '編集' : '入力'}</button>
+              ${_paymentBadgeHtml(r.paymentMethod)}
+              <button class="sales-edit-btn" onclick="openPriceEditModal('${r.reservationId}', ${priceArg}, 'sales', ${paymentArg})">${hasPrice ? '編集' : '入力'}</button>
             </div>
           </div>`;
       }).join('');
 
   return `
-    <div class="sales-chart-wrap"><canvas id="sales-breakdown-chart" height="180"></canvas></div>
     <div class="ct-history-label">予約詳細（${list.length}件）</div>
     <div class="sales-list">${listHtml}</div>
   `;
+}
+
+function _paymentBadgeHtml(method) {
+  return method ? `<span class="payment-badge">${_bkEsc(method)}</span>` : '';
 }
 
 // Chart.js は再描画のたびに canvas が作り直されるため、既存インスタンスを破棄してから再生成する
@@ -2766,25 +2773,6 @@ function _renderSalesCharts() {
         scales: { y: { ticks: { callback: v => '¥' + v.toLocaleString() } } },
       },
     });
-  }
-
-  const breakdownCanvas = document.getElementById('sales-breakdown-chart');
-  if (breakdownCanvas && s.monthDetail) {
-    if (_salesBreakdownChart) _salesBreakdownChart.destroy();
-    const breakdown = s.monthDetail.menuBreakdown || [];
-    if (breakdown.length > 0) {
-      _salesBreakdownChart = new Chart(breakdownCanvas, {
-        type: 'doughnut',
-        data: {
-          labels: breakdown.map(b => b.menuName),
-          datasets: [{
-            data: breakdown.map(b => b.total),
-            backgroundColor: ['#2E7D32','#E65100','#1565C0','#6A1B9A','#C62828','#00695C','#AD8B00'],
-          }],
-        },
-        options: { plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } } },
-      });
-    }
   }
 }
 
@@ -2818,14 +2806,9 @@ async function loadSalesMonthDetail(yearMonth) {
   const endDate   = yearMonth + '-' + String(_lastDayOfMonth(yearMonth)).padStart(2, '0');
 
   try {
-    const [breakdown, list] = await Promise.all([
-      apiGet({ action: 'getSalesMenuBreakdown', yearMonth }),
-      apiGet({ action: 'getSalesList', startDate, endDate }),
-    ]);
+    const list  = await apiGet({ action: 'getSalesList', startDate, endDate });
     const today = todayStr();
     state.sales.monthDetail = {
-      menuBreakdown: breakdown.menuBreakdown || [],
-      serviceTypeBreakdown: breakdown.serviceTypeBreakdown || {},
       listData: (list || []).filter(r => r.date <= today).sort((a, b) => b.date.localeCompare(a.date) || b.startTime.localeCompare(a.startTime)),
     };
   } catch (e) {
@@ -2847,8 +2830,13 @@ function selectSalesMonth(yearMonth) {
 // ============================================================
 // 金額の手動入力・編集モーダル（売上タブ・顧客タブ共通）
 // ============================================================
-function openPriceEditModal(reservationId, currentPrice, context) {
+function openPriceEditModal(reservationId, currentPrice, context, currentPaymentMethod) {
   _priceEditContext = context;
+
+  const paymentOptions = ['<option value="">未選択</option>']
+    .concat(PAYMENT_METHODS.map(m =>
+      `<option value="${m}" ${currentPaymentMethod === m ? 'selected' : ''}>${m}</option>`))
+    .join('');
 
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
@@ -2865,6 +2853,10 @@ function openPriceEditModal(reservationId, currentPrice, context) {
           <label class="bk-label">金額（円）</label>
           <input class="bk-input" id="price-modal-input" type="number" inputmode="numeric" min="0" step="100"
                  value="${currentPrice === '' ? '' : currentPrice}" placeholder="例：13000">
+        </div>
+        <div class="bk-field">
+          <label class="bk-label">支払い方法</label>
+          <select class="bk-input" id="price-modal-payment-select">${paymentOptions}</select>
         </div>
       </div>
       <div class="modal-footer">
@@ -2897,8 +2889,9 @@ function closePriceEditModal() {
 }
 
 async function submitPriceEdit(reservationId) {
-  const input = document.getElementById('price-modal-input');
-  const btn   = document.getElementById('price-modal-save-btn');
+  const input  = document.getElementById('price-modal-input');
+  const select = document.getElementById('price-modal-payment-select');
+  const btn    = document.getElementById('price-modal-save-btn');
   if (!input) return;
 
   const amount = Number(input.value);
@@ -2906,20 +2899,21 @@ async function submitPriceEdit(reservationId) {
     showToast('金額を正しく入力してください', true);
     return;
   }
+  const paymentMethod = select ? select.value : '';
 
   if (btn) { btn.disabled = true; btn.textContent = '保存中...'; }
   try {
-    const result = await apiPost({ action: 'updateReservationPrice', reservationId, amount });
+    const result = await apiPost({ action: 'updateReservationPrice', reservationId, amount, paymentMethod });
     if (result.error) throw new Error(result.error);
     showToast('金額を保存しました');
     closePriceEditModal();
 
     if (_priceEditContext === 'customer' && state.selectedCustomer && state.selectedCustomer.history) {
       const item = state.selectedCustomer.history.find(r => r.reservationId === reservationId);
-      if (item) { item.price = amount; item.priceType = 'manual'; }
+      if (item) { item.price = amount; item.priceType = 'manual'; item.paymentMethod = paymentMethod; }
       renderContent();
     } else if (_priceEditContext === 'sales') {
-      // 編集により月次集計・内訳も変わるため、サーバーから再取得する
+      // 編集により月次集計も変わるため、サーバーから再取得する
       loadSalesYear(state.sales.year);
     }
   } catch (e) {
