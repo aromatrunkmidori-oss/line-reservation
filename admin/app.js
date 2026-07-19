@@ -151,6 +151,8 @@ const state = {
   karteSaving: {},                 // { karteId: 'saving'|'saved'|null }
   customerEditMode: false,
   customerSaving: false,
+  showHiddenCustomers: false,
+  customerHidingSaving: false,
   // 売上タブ
   sales: {
     year:           new Date().getFullYear(),
@@ -1635,6 +1637,30 @@ async function saveCustomerInfo() {
   renderContent();
 }
 
+function toggleShowHiddenCustomers() {
+  state.showHiddenCustomers = !state.showHiddenCustomers;
+  renderContent();
+}
+
+async function toggleCustomerHiddenAction() {
+  const c = (state.selectedCustomer || {}).customer || {};
+  const nextHidden = !c.hidden;
+
+  state.customerHidingSaving = true;
+  renderContent();
+  try {
+    await apiPost({ action: 'toggleCustomerHidden', lineUserId: c.lineUserId, hidden: nextHidden, name: c.name });
+    state.selectedCustomer.customer = Object.assign({}, c, { hidden: nextHidden });
+    const listItem = state.customerList.find(item => item.lineUserId === c.lineUserId);
+    if (listItem) listItem.hidden = nextHidden;
+    showToast(nextHidden ? '非表示にしました' : '表示に戻しました');
+  } catch(e) {
+    showToast('操作に失敗しました', true);
+  }
+  state.customerHidingSaving = false;
+  renderContent();
+}
+
 async function saveKarteMemo(karteId) {
   const el = document.getElementById('memo-' + karteId);
   if (!el) return;
@@ -1695,6 +1721,7 @@ function renderCustomersTab() {
       <input id="ct-search-input" class="ct-search-input" type="search" placeholder="名前で検索..."
              value="${_bkEsc(state.customerSearch)}"
              oninput="setCustomerSearch(this.value)">
+      <button class="ct-hidden-toggle${state.showHiddenCustomers ? ' active' : ''}" onclick="toggleShowHiddenCustomers()">${state.showHiddenCustomers ? '非表示中も表示' : '非表示の顧客を表示'}</button>
     </div>`;
 
   return custHeader + `<div class="ct-list" id="ct-list-container">${_buildCustomerCards()}</div>`;
@@ -1705,17 +1732,23 @@ function _buildCustomerCards() {
     return `<div class="empty-state">まだ顧客データがありません</div>`;
   }
 
+  const visibleList = state.showHiddenCustomers
+    ? state.customerList
+    : state.customerList.filter(c => !c.hidden);
+
   const q  = _toHiragana(state.customerSearch.trim().toLowerCase());
   const filtered = q
-    ? state.customerList.filter(c => {
+    ? visibleList.filter(c => {
         const name     = _toHiragana((c.name     || '').toLowerCase());
         const furigana = _toHiragana((c.furigana || '').toLowerCase());
         return name.startsWith(q) || furigana.startsWith(q);
       })
-    : state.customerList;
+    : visibleList;
 
   if (filtered.length === 0) {
-    return `<div class="empty-state">「${_bkEsc(state.customerSearch)}」に一致する顧客が見つかりません</div>`;
+    return state.customerSearch.trim()
+      ? `<div class="empty-state">「${_bkEsc(state.customerSearch)}」に一致する顧客が見つかりません</div>`
+      : `<div class="empty-state">表示中の顧客がありません（非表示の顧客のみです）</div>`;
   }
 
   return filtered.map(c => {
@@ -1736,9 +1769,10 @@ function _buildCustomerCards() {
       ? `<div class="ct-card-memo">${_bkEsc(c.latestMemo.slice(0, 40))}${c.latestMemo.length > 40 ? '…' : ''}</div>`
       : '';
     return `
-      <div class="ct-card" onclick="openCustomerDetail('${_bkEsc(c.lineUserId)}')">
+      <div class="ct-card${c.hidden ? ' ct-card-hidden' : ''}" onclick="openCustomerDetail('${_bkEsc(c.lineUserId)}')">
         <div class="ct-card-top">
           <span class="ct-name">${_bkEsc(c.name)}</span>
+          ${c.hidden ? '<span class="ct-badge-hidden">非表示</span>' : ''}
           <span class="ct-visit-count">${c.visitCount}回</span>
         </div>
         ${prevSnip}
@@ -1844,7 +1878,8 @@ function _renderCustomerDetail() {
     <div class="ct-detail">
       <div class="ct-detail-header">
         <button class="btn-back-reschedule" onclick="closeCustomerDetail()">← 一覧に戻る</button>
-        <span class="ct-detail-name">${_bkEsc(c.name || '')}</span>
+        <span class="ct-detail-name">${_bkEsc(c.name || '')}${c.hidden ? '<span class="ct-badge-hidden">非表示</span>' : ''}</span>
+        <button class="ct-hide-btn" onclick="toggleCustomerHiddenAction()" ${state.customerHidingSaving ? 'disabled' : ''}>${c.hidden ? '表示に戻す' : '非表示にする'}</button>
         <button class="ct-edit-btn" onclick="toggleCustomerEditMode()">編集</button>
       </div>
       ${infoRows ? `<div class="ct-info-block">${infoRows}</div>` : ''}

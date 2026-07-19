@@ -1379,7 +1379,6 @@
     .ct-save-btn:active { opacity: .75; }
     .ct-no-karte { font-size: 12px; color: var(--text-secondary); margin: 4px 0 0; }
     .ct-edit-btn {
-      margin-left: auto;
       background: none;
       border: 1px solid var(--primary);
       color: var(--primary);
@@ -1391,6 +1390,49 @@
       -webkit-tap-highlight-color: transparent;
     }
     .ct-edit-btn:active { opacity: .7; }
+    .ct-hide-btn {
+      margin-left: auto;
+      background: none;
+      border: 1px solid var(--text-secondary);
+      color: var(--text-secondary);
+      border-radius: var(--radius-sm);
+      padding: 5px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .ct-hide-btn:active { opacity: .7; }
+    .ct-hide-btn:disabled { opacity: .5; cursor: default; }
+    .ct-hidden-toggle {
+      margin-top: 8px;
+      padding: 5px 12px;
+      border: 1.5px solid var(--border);
+      border-radius: 20px;
+      background: var(--bg-card);
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .ct-hidden-toggle.active {
+      border-color: var(--primary);
+      color: var(--primary);
+      background: var(--primary-pale, #e8f5e9);
+    }
+    .ct-hidden-toggle:active { opacity: .7; }
+    .ct-badge-hidden {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      background: var(--border-light);
+      padding: 2px 8px;
+      border-radius: 10px;
+      margin-left: 6px;
+    }
+    .ct-card-hidden { opacity: .6; }
     .ct-edit-form {
       padding: 14px 16px;
       display: flex;
