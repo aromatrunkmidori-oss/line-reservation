@@ -1,0 +1,801 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>trunk 管理（ローカルテスト）</title>
+  <link rel="stylesheet" href="../style.css">
+
+  <!--
+    ローカルテスト専用 LIFF モック
+    オーナー LINE User ID の指定方法（優先順）:
+      1. URL パラメータ: http://localhost:3000/admin/index.local.html?userId=Uxxxxxxxx
+      2. 下の OWNER_LINE_USER_ID 定数を直接書き換え
+  -->
+  <script>
+    const OWNER_LINE_USER_ID = 'Ud5c66c36dc18832d2d93c13a192a1b53';
+
+    const params = new URLSearchParams(location.search);
+    const mockUserId = params.get('userId') || OWNER_LINE_USER_ID;
+
+    window.liff = {
+      init:        () => Promise.resolve(),
+      isInClient:  () => true,
+      isLoggedIn:  () => true,
+      getProfile:  () => Promise.resolve({
+        userId:      mockUserId,
+        displayName: 'オーナー（テスト）',
+        pictureUrl:  '',
+      }),
+      login:       () => { console.log('[LIFF Mock] login()'); },
+      logout:      () => { console.log('[LIFF Mock] logout()'); },
+      closeWindow: () => { alert('[LIFF Mock] closeWindow()'); },
+      getOS:          () => 'web',
+      getLanguage:    () => 'ja',
+      getVersion:     () => '2.22.3',
+      isApiAvailable: () => true,
+    };
+
+    console.log('%c[LIFF Mock - Admin] userId: ' + mockUserId, 'color: orange; font-weight: bold;');
+  </script>
+
+  <style>
+    /* ── タブバー ── */
+    .admin-tab-bar {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      display: flex;
+      background: var(--bg-card);
+      border-top: 1px solid var(--border-light);
+      padding-bottom: env(safe-area-inset-bottom);
+      z-index: 100;
+    }
+    .admin-tab-btn {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+      padding: 10px 0;
+      background: none;
+      border: none;
+      font-size: 11px;
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: color .2s;
+    }
+    .admin-tab-btn.active { color: var(--primary); }
+    .admin-tab-icon { width: 22px; height: 22px; display: block; }
+
+    /* ── コンテンツ ── */
+    .admin-content {
+      padding-bottom: 72px;
+      min-height: calc(100vh - 60px);
+    }
+
+    /* ── 日付ナビ ── */
+    .date-nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      background: var(--bg-card);
+      border-bottom: 1px solid var(--border-light);
+      position: sticky;
+      top: 60px;
+      z-index: 10;
+    }
+    .date-nav-btn {
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 50%;
+      width: 36px; height: 36px;
+      font-size: 20px;
+      color: var(--text-primary);
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .date-nav-label {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    /* ── 予約カード ── */
+    .reservation-list {
+      padding: 12px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .reservation-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+      box-shadow: var(--shadow-sm);
+    }
+    .reservation-time {
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 6px;
+    }
+    .reservation-info {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+    .service-badge {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 20px;
+      white-space: nowrap;
+    }
+    .badge-visit  { background: #E8F5E9; color: #2E7D32; }
+    .badge-mobile { background: #FFF3E0; color: #E65100; }
+    .badge-web    { background: #E3F2FD; color: #1565C0; }
+    .badge-cal    { background: #F3E5F5; color: #6A1B9A; }
+    /* タブヘッダー（タイトル + 更新ボタン） */
+    .tab-header { display:flex; align-items:center; justify-content:space-between; padding:12px 4px 6px; }
+    .tab-header-title { font-size:15px; font-weight:700; color:var(--text-primary); }
+    /* 更新ボタン */
+    .refresh-btn { padding:5px 12px; border:1.5px solid var(--border); border-radius:20px; background:var(--bg-card); font-size:12px; font-weight:600; color:var(--text-secondary); cursor:pointer; white-space:nowrap; }
+    .refresh-btn:active { background:var(--border); }
+    /* 来店/出張 切り替えトグル */
+    .grid-type-toggle { display:flex; gap:6px; padding:8px 12px 0; }
+    .type-btn { padding:6px 18px; border:1.5px solid var(--border); border-radius:20px; background:var(--bg-card); font-size:13px; font-weight:600; cursor:pointer; color:var(--text-secondary); }
+    .type-btn.active { background:var(--primary); border-color:var(--primary); color:#fff; }
+    /* 来店ブロックセル */
+    .grid-cell.visit-blocked { background:#FFEBEE; color:#C62828; cursor:pointer; font-size:13px; font-weight:700; }
+    .reservation-name { font-size: 15px; font-weight: 600; }
+    .reservation-menu { font-size: 13px; color: var(--text-secondary); margin-top: 2px; }
+
+    /* ── 日付セクションヘッダー ── */
+    .date-section-header {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text-secondary);
+      padding: 12px 4px 4px;
+      border-bottom: 1px solid var(--border-light);
+      margin-bottom: 2px;
+    }
+
+    /* ── 空表示 ── */
+    .empty-state {
+      text-align: center;
+      padding: 48px 24px;
+      color: var(--text-secondary);
+      font-size: 14px;
+    }
+
+    /* ── エラートースト ── */
+    .toast-error { background: #EF5350 !important; }
+
+    /* ── グリッド全体 ── */
+    .grid-container {
+      display: flex;
+      flex-direction: column;
+      height: calc(100vh - 132px);
+    }
+    .grid-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 12px;
+      background: var(--bg-card);
+      border-bottom: 1px solid var(--border-light);
+      flex-shrink: 0;
+      gap: 8px;
+    }
+    .grid-toolbar-note {
+      font-size: 11px;
+      color: var(--text-secondary);
+      flex: 1;
+    }
+    .grid-save-btn {
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius-sm);
+      padding: 7px 16px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .grid-save-btn:disabled { opacity: .5; }
+    .grid-save-btn.hidden { visibility: hidden; }
+
+    .grid-scroll {
+      overflow: auto;
+      -webkit-overflow-scrolling: touch;
+      flex: 1;
+    }
+
+    /* ── グリッドテーブル ── */
+    .grid-table {
+      border-collapse: collapse;
+      min-width: max-content;
+    }
+
+    .grid-corner { position:sticky; top:0; left:0; z-index:30; background:#F0F0F0; width:54px; min-width:54px; font-size:10px; color:var(--text-secondary); text-align:center; padding:6px 2px; border-right:2px solid #C8C8C8; border-bottom:2px solid #C8C8C8; }
+    .grid-date-th { position:sticky; top:0; z-index:20; background:#F5F5F5; min-width:64px; text-align:center; padding:6px 2px; border-right:1px solid #DADADA; border-bottom:2px solid #C8C8C8; font-size:11px; font-weight:700; line-height:1.5; white-space:nowrap; color:var(--text-primary); }
+    .grid-date-th.today-col { background:#DFF2DF; color:var(--primary); border-bottom-color:var(--primary); }
+    .grid-date-th.sun { color:#D32F2F; }
+    .grid-date-th.sat { color:#1565C0; }
+    .grid-date-th.today-col.sun, .grid-date-th.today-col.sat { color:var(--primary); }
+    .grid-holiday-badge { display:block; margin:2px auto 0; padding:1px 4px; font-size:8px; font-weight:600; border:1px solid #C62828; border-radius:3px; background:#FFEBEE; color:#C62828; cursor:pointer; line-height:1.4; white-space:nowrap; }
+    .grid-holiday-badge.active { background:#E8F5E9; color:#2E7D32; border-color:#2E7D32; }
+    .grid-holiday-badge:active { opacity:.7; }
+    .grid-bulk-btn { display:block; margin:3px auto 0; padding:1px 4px; font-size:9px; font-weight:600; border:1px solid #aaa; border-radius:3px; background:#fff; color:var(--primary); cursor:pointer; line-height:1.4; white-space:nowrap; }
+    .grid-bulk-btn.all-open { color:#999; border-color:#ccc; }
+    .grid-bulk-btn:active { background:#f0f0f0; }
+    .grid-time-td { position:sticky; left:0; z-index:10; background:#F5F5F5; width:54px; min-width:54px; font-size:11px; font-weight:600; color:#666; text-align:right; padding:0 7px 0 0; border-right:2px solid #C8C8C8; border-bottom:1px solid #DADADA; white-space:nowrap; height:40px; }
+    tr:nth-child(odd) .grid-time-td { border-bottom-color:#C8C8C8; }
+    .grid-cell { min-width:64px; height:40px; text-align:center; vertical-align:middle; border-right:1px solid #DADADA; border-bottom:1px solid #DADADA; cursor:pointer; font-size:15px; font-weight:700; -webkit-tap-highlight-color:transparent; user-select:none; padding:2px 3px; transition:opacity .12s; }
+    .grid-cell:active { opacity:.65; }
+    tr:nth-child(odd) .grid-cell { border-bottom-color:#C8C8C8; }
+    .grid-cell.closed        { color:#C4C4C4; background:#F8F8F8; font-size:13px; }
+    .grid-cell.open          { color:#1B5E20; background:#E8F5E9; font-size:16px; }
+    .grid-cell.pending-open  { color:#1B5E20; background:#81C784; }
+    .grid-cell.pending-close { color:#B71C1C; background:#EF9A9A; }
+    .grid-cell.reserved { background:#F7F7F8; color:#1A1A1A; font-size:10px; font-weight:600; line-height:1.3; cursor:default; }
+    .grid-cell.reserved-open { background:#EEF7EE; color:#1A1A1A; font-size:10px; font-weight:600; line-height:1.3; cursor:default; }
+    .grid-cell.today-col.closed { background:#F0FAF0; }
+    .grid-cell.today-col.open   { background:#C8E6C9; }
+    .grid-cell.holiday-col      { background:rgba(198,40,40,0.04); }
+
+    /* ── プライベートカレンダー予定 ── */
+    .grid-cell.cal-event {
+      background: #E8EAF6;
+      color: #283593;
+      font-size: 9px;
+      font-weight: 600;
+      line-height: 1.3;
+      cursor: pointer;
+    }
+    .grid-cell.cal-event-open {
+      background: #C5CAE9;
+      color: #1A237E;
+      font-size: 9px;
+      font-weight: 600;
+      line-height: 1.3;
+      cursor: pointer;
+    }
+    /* ── 予約管理カレンダー直接入力 ── */
+    .grid-cell.cal-direct {
+      background: #E0F2F1;
+      color: #00695C;
+      font-size: 9px;
+      font-weight: 600;
+      line-height: 1.3;
+      cursor: pointer;
+    }
+    .grid-cell.cal-direct-open {
+      background: #B2DFDB;
+      color: #004D40;
+      font-size: 9px;
+      font-weight: 600;
+      line-height: 1.3;
+      cursor: pointer;
+    }
+    .cell-cal-inner {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1px;
+      overflow: hidden;
+      max-width: 58px;
+    }
+    .dot-private {
+      background: #EDE7F6;
+      color: #4527A0;
+      border: 1px solid #B39DDB;
+    }
+    .dot-direct {
+      background: #E0F2F1;
+      color: #00695C;
+      border: 1px solid #80CBC4;
+    }
+
+    /* ── インターバル（受付不可バッファ）── */
+    .grid-cell.interval {
+      background: repeating-linear-gradient(
+        -45deg,
+        #FAFAFA 0px, #FAFAFA 4px,
+        #EEEEEE 4px, #EEEEEE 8px
+      );
+      color: #BDBDBD;
+      cursor: pointer;
+    }
+    .grid-cell.interval-open {
+      background: repeating-linear-gradient(
+        -45deg,
+        #F1F8E9 0px, #F1F8E9 4px,
+        #DCEDC8 4px, #DCEDC8 8px
+      );
+      color: #558B2F;
+      cursor: pointer;
+    }
+    .cell-interval-label {
+      font-size: 9px;
+      font-weight: 600;
+      letter-spacing: 0;
+    }
+
+    /* ── 施術予約セル内レイアウト ── */
+    .cell-res-inner {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      overflow: hidden;
+      max-width: 60px;
+    }
+    .cell-name {
+      font-size: 10px;
+      font-weight: 600;
+      color: #1A1A1A;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 60px;
+      letter-spacing: -0.2px;
+    }
+    .cell-type-tag {
+      display: inline-block;
+      font-size: 8px;
+      font-weight: 700;
+      letter-spacing: 0.4px;
+      padding: 1px 5px;
+      border-radius: 10px;
+      line-height: 1.5;
+      white-space: nowrap;
+    }
+    .dot-visit  { background: #E8F5E9; color: #2E7D32; border: 1px solid #A5D6A7; }
+    .dot-mobile { background: #FFF3E0; color: #E65100; border: 1px solid #FFCC80; }
+
+    /* ── スパンセル（rowspan で結合した予約・カレンダー枠）── */
+    .grid-cell.span-cell { vertical-align: top; padding: 5px 3px; cursor: default; }
+    .grid-cell.span-cell.cal-event,
+    .grid-cell.span-cell.cal-event-open,
+    .grid-cell.span-cell.cal-direct,
+    .grid-cell.span-cell.cal-direct-open { cursor: pointer; }
+    .cell-res-time { font-size: 8px; font-weight: 500; color: #888; letter-spacing: -0.2px; }
+    .cell-menu { font-size: 8px; font-weight: 400; color: #999; white-space: normal; word-break: break-all; max-width: 60px; }
+    .grid-cell.span-cell .cell-name { white-space: normal; word-break: break-all; overflow: visible; text-overflow: clip; }
+    .cell-cal-span { display: flex; flex-direction: column; align-items: center; gap: 2px; max-width: 60px; }
+    .cell-cal-title { font-size: 9px; font-weight: 600; white-space: normal; word-break: break-all; max-width: 60px; }
+    .cell-cal-timerange { font-size: 8px; font-weight: 400; opacity: 0.75; white-space: nowrap; }
+
+    /* ── タップ効果 ── */
+    .reservation-card.tappable {
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      transition: opacity .15s;
+    }
+    .reservation-card.tappable:active { opacity: .65; }
+
+    /* ── キャンセル済カード ── */
+    .reservation-card.cancelled {
+      background: #F5F5F5;
+      border-color: #E0E0E0;
+    }
+    .reservation-card.cancelled .reservation-time,
+    .reservation-card.cancelled .reservation-name { color: var(--text-secondary); }
+
+    /* ── キャンセル済バッジ ── */
+    .badge-cancelled {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 20px;
+      background: #EEEEEE;
+      color: #757575;
+      white-space: nowrap;
+    }
+
+    /* ── モーダルオーバーレイ ── */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0);
+      z-index: 200;
+      transition: background .25s;
+      display: flex;
+      align-items: flex-end;
+    }
+    .modal-overlay.visible { background: rgba(0,0,0,.45); }
+
+    .modal-sheet {
+      width: 100%;
+      background: var(--bg-card);
+      border-radius: 16px 16px 0 0;
+      padding-bottom: env(safe-area-inset-bottom, 16px);
+      transform: translateY(100%);
+      transition: transform .3s cubic-bezier(.25,.8,.25,1);
+    }
+    .modal-sheet.visible { transform: translateY(0); }
+
+    .modal-handle {
+      width: 40px; height: 4px;
+      background: var(--border);
+      border-radius: 2px;
+      margin: 10px auto 0;
+    }
+    .modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 16px 10px;
+      border-bottom: 1px solid var(--border-light);
+    }
+    .modal-title { font-size: 16px; font-weight: 700; color: var(--text-primary); }
+    .modal-close {
+      background: none;
+      border: none;
+      font-size: 18px;
+      color: var(--text-secondary);
+      cursor: pointer;
+      padding: 4px 8px;
+      line-height: 1;
+    }
+
+    .modal-cancelled-banner {
+      background: #FFF3E0;
+      color: #E65100;
+      font-size: 13px;
+      font-weight: 600;
+      text-align: center;
+      padding: 8px 16px;
+      border-bottom: 1px solid #FFE0B2;
+    }
+
+    .modal-body { padding: 4px 16px 16px; }
+    .detail-row {
+      display: flex;
+      align-items: flex-start;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border-light);
+    }
+    .detail-row:last-child { border-bottom: none; }
+    .detail-label {
+      flex: 0 0 56px;
+      font-size: 12px;
+      color: var(--text-secondary);
+      padding-top: 3px;
+    }
+    .detail-value {
+      flex: 1;
+      font-size: 14px;
+      color: var(--text-primary);
+      font-weight: 500;
+      line-height: 1.6;
+    }
+
+    .modal-footer {
+      padding: 0 16px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .btn-reschedule-reservation {
+      width: 100%;
+      background: transparent;
+      color: var(--primary);
+      border: 2px solid var(--primary);
+      border-radius: var(--radius);
+      padding: 13px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: opacity .15s;
+    }
+    .btn-reschedule-reservation:active { opacity: .7; }
+    .btn-cancel-reservation {
+      width: 100%;
+      background: #EF5350;
+      color: #fff;
+      border: none;
+      border-radius: var(--radius);
+      padding: 14px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: opacity .15s, background .2s;
+    }
+    .btn-cancel-reservation:disabled { opacity: .5; cursor: default; }
+    .btn-cancel-reservation:not(:disabled):active { opacity: .8; }
+
+    .reschedule-form { display: flex; flex-direction: column; gap: 10px; }
+    .reschedule-date-row { display: flex; gap: 8px; align-items: center; }
+    .reschedule-date-input {
+      flex: 1;
+      padding: 9px 10px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-size: 14px;
+      color: var(--text-primary);
+      background: var(--bg);
+    }
+    .reschedule-check-btn {
+      white-space: nowrap;
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius-sm);
+      padding: 9px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .reschedule-check-btn:disabled { opacity: .5; cursor: default; }
+    .reschedule-slots-container { max-height: 160px; overflow-y: auto; }
+    .reschedule-loading, .reschedule-no-slots {
+      font-size: 13px;
+      color: var(--text-secondary);
+      text-align: center;
+      padding: 12px 0;
+    }
+    .reschedule-slots-label { font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; }
+    .reschedule-slots-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+    .reschedule-slot-btn {
+      padding: 6px 14px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-primary);
+      cursor: pointer;
+    }
+    .reschedule-slot-btn.selected {
+      background: var(--primary);
+      color: #fff;
+      border-color: var(--primary);
+    }
+    .btn-confirm-reschedule {
+      width: 100%;
+      background: #2E7D32;
+      color: #fff;
+      border: none;
+      border-radius: var(--radius);
+      padding: 14px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      line-height: 1.4;
+    }
+    .btn-confirm-reschedule:disabled { opacity: .5; cursor: default; }
+    .btn-back-reschedule {
+      background: none;
+      border: none;
+      color: var(--text-secondary);
+      font-size: 13px;
+      cursor: pointer;
+      padding: 4px 0;
+      text-align: left;
+    }
+
+    /* ── 代理予約フォーム ── */
+    .bk-scroll { padding: 12px 16px 32px; }
+    .bk-section { margin-bottom: 22px; }
+    .bk-section-title {
+      font-size: 11px; font-weight: 700; color: var(--text-secondary);
+      letter-spacing: .5px; text-transform: uppercase;
+      margin-bottom: 10px; padding-bottom: 5px;
+      border-bottom: 1px solid var(--border-light);
+    }
+    .bk-pill-group { display: flex; gap: 8px; flex-wrap: wrap; }
+    .bk-pill-col { display: flex; flex-direction: column; gap: 6px; }
+    .bk-pill {
+      padding: 8px 18px; background: var(--bg);
+      border: 1.5px solid var(--border); border-radius: 20px;
+      font-size: 14px; font-weight: 600; color: var(--text-primary);
+      cursor: pointer; transition: background .15s, color .15s, border-color .15s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .bk-pill.active { background: var(--primary); border-color: var(--primary); color: #fff; }
+    .bk-pill-wide { border-radius: var(--radius-sm); text-align: left; padding: 11px 14px; }
+    .bk-field { margin-bottom: 10px; }
+    .bk-label { display: block; font-size: 12px; color: var(--text-secondary); font-weight: 500; margin-bottom: 4px; }
+    .bk-required { color: #EF5350; }
+    .bk-input {
+      width: 100%; padding: 11px 12px; border: 1px solid var(--border);
+      border-radius: var(--radius-sm); font-size: 15px; color: var(--text-primary);
+      background: var(--bg); box-sizing: border-box;
+    }
+    .bk-input:focus { outline: none; border-color: var(--primary); }
+    .bk-date-row { display: flex; gap: 8px; align-items: center; }
+    .bk-date-input {
+      flex: 1; padding: 11px 12px; border: 1px solid var(--border);
+      border-radius: var(--radius-sm); font-size: 15px; color: var(--text-primary); background: var(--bg);
+    }
+    .bk-check-btn {
+      white-space: nowrap; background: var(--primary); color: #fff; border: none;
+      border-radius: var(--radius-sm); padding: 11px 14px; font-size: 13px; font-weight: 600; cursor: pointer;
+    }
+    .bk-check-btn:disabled { opacity: .45; cursor: default; }
+    .bk-slots-area { margin-top: 10px; min-height: 24px; }
+    .bk-slots-note { font-size: 13px; color: var(--text-secondary); padding: 8px 0; }
+    .bk-slots-label { font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; }
+    .bk-slots-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+    .bk-slot-btn {
+      padding: 7px 14px; background: var(--bg); border: 1px solid var(--border);
+      border-radius: 20px; font-size: 13px; font-weight: 600; color: var(--text-primary);
+      cursor: pointer; transition: background .15s, color .15s, border-color .15s;
+    }
+    .bk-slot-btn.selected { background: var(--primary); color: #fff; border-color: var(--primary); }
+    .bk-submit-area { margin-top: 24px; padding-bottom: 8px; }
+    .bk-submit-btn {
+      width: 100%; background: var(--primary); color: #fff; border: none;
+      border-radius: var(--radius); padding: 16px; font-size: 16px; font-weight: 700;
+      cursor: pointer; transition: opacity .15s;
+    }
+    .bk-submit-btn:disabled { opacity: .35; cursor: default; }
+    .bk-submit-btn:not(:disabled):active { opacity: .8; }
+
+    /* ── 代理予約 成功画面 ── */
+    .bk-success { padding: 40px 20px 32px; display: flex; flex-direction: column; align-items: center; gap: 18px; }
+    .bk-success-icon {
+      width: 64px; height: 64px; background: var(--primary); border-radius: 50%;
+      display: flex; align-items: center; justify-content: center; font-size: 30px; font-weight: 700; color: #fff;
+    }
+    .bk-success-title { font-size: 18px; font-weight: 700; color: var(--text-primary); }
+    .bk-success-detail {
+      width: 100%; background: var(--bg-card); border: 1px solid var(--border-light);
+      border-radius: var(--radius); padding: 4px 16px;
+    }
+    .bk-success-row {
+      display: flex; align-items: flex-start; gap: 12px; padding: 10px 0;
+      border-bottom: 1px solid var(--border-light); font-size: 14px;
+    }
+    .bk-success-row:last-child { border-bottom: none; }
+    .bk-success-label { flex: 0 0 52px; font-size: 12px; color: var(--text-secondary); padding-top: 2px; }
+    .bk-btn-primary {
+      width: 100%; background: var(--primary); color: #fff; border: none;
+      border-radius: var(--radius); padding: 14px; font-size: 15px; font-weight: 700; cursor: pointer;
+    }
+    .bk-btn-secondary {
+      width: 100%; background: none; color: var(--text-secondary); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 13px; font-size: 14px; font-weight: 600; cursor: pointer;
+    }
+    .bk-step-bar { display:flex; align-items:center; justify-content:center; gap:0; margin:0 0 24px; }
+    .bk-step { width:28px; height:28px; border-radius:50%; border:2px solid var(--border); color:var(--text-secondary); font-size:13px; font-weight:700; display:flex; align-items:center; justify-content:center; background:var(--bg); flex-shrink:0; }
+    .bk-step.active { border-color:var(--primary); color:var(--primary); background:#e8f5e9; }
+    .bk-step.done { border-color:var(--primary); background:var(--primary); color:#fff; }
+    .bk-step-line { flex:1; height:2px; background:var(--border); max-width:48px; }
+    .bk-step-line.active { background:var(--primary); }
+    .bk-grid-footer { display:flex; gap:8px; align-items:stretch; padding-bottom:8px; }
+    .bk-grid-footer .bk-btn-secondary { flex:0 0 auto; width:auto; padding:14px 18px; }
+    .bk-submit-inline { flex:1; padding:14px; font-size:15px; }
+    .bk-grid-loading { display:flex; align-items:center; gap:10px; padding:32px 0; justify-content:center; color:var(--text-secondary); font-size:13px; }
+    .bk-no-avail { margin:0 0 8px; padding:10px 14px; background:#FFF3CD; border:1px solid #FADA7A; border-radius:8px; color:#7A5C00; font-size:13px; text-align:center; }
+    .bk-cg-nav { display:flex; justify-content:space-between; margin-bottom:8px; }
+    .bk-cg-nav-btn { background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius-sm); padding:7px 14px; font-size:13px; font-weight:600; color:var(--text-primary); cursor:pointer; }
+    .bk-cg-nav-btn:disabled { opacity:.4; cursor:default; }
+    .bk-cg-banner { background:#e8f5e9; border:1px solid var(--primary); border-radius:8px; padding:9px 14px; font-size:13px; font-weight:600; color:var(--primary); text-align:center; margin-bottom:8px; }
+    .bk-cg-scroll { overflow-x:auto; -webkit-overflow-scrolling:touch; margin-bottom:16px; border:1px solid var(--border-light); border-radius:var(--radius-sm); }
+    .bk-cg-table { border-collapse:collapse; min-width:100%; font-size:12px; }
+    .bk-cg-corner { position:sticky; left:0; background:var(--bg-card); z-index:2; min-width:44px; padding:6px 4px; text-align:center; font-size:10px; color:var(--text-secondary); border-right:1px solid var(--border-light); border-bottom:1px solid var(--border-light); }
+    .bk-cg-th { min-width:34px; padding:5px 2px; text-align:center; font-size:11px; font-weight:600; border-bottom:1px solid var(--border-light); border-right:1px solid var(--border-light); background:var(--bg-card); white-space:nowrap; }
+    .bk-cg-th.bk-cg-today { background:#e8f5e9; color:var(--primary); }
+    .bk-cg-th.bk-cg-sun { color:#C0392B; }
+    .bk-cg-th.bk-cg-sat { color:#1565C0; }
+    .bk-cg-dow { font-weight:400; font-size:10px; }
+    .bk-cg-time { position:sticky; left:0; background:var(--bg-card); z-index:1; padding:5px 4px; text-align:right; font-size:11px; color:var(--text-secondary); border-right:1px solid var(--border-light); border-bottom:1px solid var(--border-light); white-space:nowrap; }
+    .bk-cg-cell { text-align:center; padding:5px 2px; border-right:1px solid var(--border-light); border-bottom:1px solid var(--border-light); font-size:12px; min-width:34px; }
+    .bk-cg-cell.bk-cg-open { color:var(--primary); font-weight:700; cursor:pointer; background:#f0faf0; }
+    .bk-cg-cell.bk-cg-open:active { background:#d0e8d0; }
+    .bk-cg-cell.bk-cg-sel { background:var(--primary); color:#fff; font-weight:700; cursor:pointer; }
+    .bk-cg-cell.bk-cg-closed { color:var(--border); background:var(--bg); }
+    .rs-header { display:flex; flex-direction:column; gap:4px; padding:10px 0 14px; border-bottom:1px solid var(--border-light); margin-bottom:14px; }
+    .rs-current { display:flex; align-items:baseline; gap:8px; font-size:13px; }
+    .rs-current-label { flex:0 0 44px; font-size:11px; color:var(--text-secondary); }
+    .rs-current-val { color:var(--text-primary); font-weight:500; }
+    .grid-date-th.grid-holiday-th { background:#FFEBEE; color:#C62828; }
+    .grid-holiday-col { background:#FFEBEE; text-align:center; vertical-align:middle; cursor:default; padding:0; }
+    .grid-holiday-inner { display:flex; align-items:center; justify-content:center; width:100%; height:100%; min-height:120px; }
+    .bk-cg-th.bk-cg-holiday { background:#FFEBEE; color:#C62828; }
+    .bk-cg-cell.bk-cg-holiday-col { background:#FFEBEE; text-align:center; vertical-align:middle; cursor:default; }
+    .bk-cg-cell.bk-cg-reserved { background:#F7F7F8; cursor:default; vertical-align:middle; }
+    .bk-cg-cell.bk-cg-cal { background:#E8EAF6; color:#283593; font-size:9px; font-weight:600; line-height:1.3; cursor:default; vertical-align:middle; }
+    .bk-cg-cell.bk-cg-cal-direct { background:#E0F2F1; color:#00695C; font-size:9px; font-weight:600; line-height:1.3; cursor:default; vertical-align:middle; }
+    .bk-cg-cell.bk-cg-interval { background:repeating-linear-gradient(-45deg,#FAFAFA 0,#FAFAFA 4px,#EEEEEE 4px,#EEEEEE 8px); color:#BDBDBD; cursor:default; vertical-align:middle; }
+    .ct-list { padding:12px 16px 80px; display:flex; flex-direction:column; gap:10px; }
+    .ct-card { background:var(--bg-card); border:1px solid var(--border-light); border-radius:var(--radius); padding:14px 16px; box-shadow:var(--shadow-sm); cursor:pointer; -webkit-tap-highlight-color:transparent; transition:opacity .15s; }
+    .ct-card:active { opacity:.65; }
+    .ct-card-top { display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; }
+    .ct-name { font-size:16px; font-weight:700; color:var(--text-primary); }
+    .ct-visit-count { font-size:11px; font-weight:600; color:var(--primary); background:#e8f5e9; padding:2px 8px; border-radius:10px; }
+    .ct-card-mid { display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:4px; }
+    .ct-latest-date,.ct-latest-menu { font-size:12px; color:var(--text-secondary); }
+    .ct-search-bar { padding:8px 16px 4px; }
+    .ct-search-input { width:100%; box-sizing:border-box; padding:8px 12px; border:1px solid var(--border-light); border-radius:var(--radius); font-size:14px; background:var(--bg-card); color:var(--text-primary); outline:none; }
+    .ct-search-input:focus { border-color:var(--accent); }
+    .ct-card-next { font-size:12px; color:#1565C0; margin-top:6px; }
+    .ct-card-address { font-size:12px; color:var(--text-secondary); margin-top:4px; }
+    .ct-card-memo { font-size:12px; color:var(--text-secondary); background:#F9F9F9; border-radius:6px; padding:6px 10px; margin-top:6px; line-height:1.5; white-space:pre-wrap; }
+    .ct-detail { padding:0 0 80px; }
+    .ct-detail-header { display:flex; align-items:center; gap:12px; padding:12px 16px; border-bottom:1px solid var(--border-light); position:sticky; top:60px; background:var(--bg-card); z-index:10; }
+    .ct-detail-name { font-size:17px; font-weight:700; color:var(--text-primary); }
+    .ct-info-block { padding:10px 16px; background:var(--bg-card); border-bottom:1px solid var(--border-light); }
+    .ct-info-row { display:flex; gap:12px; padding:5px 0; font-size:13px; }
+    .ct-info-label { flex:0 0 36px; color:var(--text-secondary); font-size:11px; padding-top:2px; }
+    .ct-history-label { font-size:11px; font-weight:700; color:var(--text-secondary); letter-spacing:.5px; text-transform:uppercase; padding:14px 16px 4px; }
+    .ct-history-list { padding:0 16px; }
+    .ct-history-item { border-bottom:1px solid var(--border-light); padding:14px 0; }
+    .ct-history-item:last-child { border-bottom:none; }
+    .ct-history-item.ct-cancelled { opacity:.55; }
+    .ct-history-header { display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:4px; }
+    .ct-history-date { font-size:13px; font-weight:600; color:var(--text-primary); }
+    .ct-history-time { font-size:12px; color:var(--text-secondary); }
+    .ct-history-menu { font-size:13px; color:var(--text-secondary); margin-bottom:10px; }
+    .ct-memo-section { display:flex; flex-direction:column; gap:6px; }
+    .ct-memo-textarea { width:100%; box-sizing:border-box; padding:10px 12px; border:1px solid var(--border); border-radius:var(--radius-sm); font-size:14px; font-family:inherit; color:var(--text-primary); background:var(--bg); resize:vertical; line-height:1.5; }
+    .ct-memo-textarea:focus { outline:none; border-color:var(--primary); }
+    .ct-save-btn { align-self:flex-end; background:var(--primary); color:#fff; border:none; border-radius:var(--radius-sm); padding:7px 18px; font-size:13px; font-weight:600; cursor:pointer; }
+    .ct-no-karte { font-size:12px; color:var(--text-secondary); margin:4px 0 0; }
+    .ct-edit-btn { background:none; border:1px solid var(--primary); color:var(--primary); border-radius:var(--radius-sm); padding:5px 14px; font-size:13px; font-weight:600; cursor:pointer; -webkit-tap-highlight-color:transparent; }
+    .ct-edit-btn:active { opacity:.7; }
+    .ct-hide-btn { margin-left:auto; background:none; border:1px solid var(--text-secondary); color:var(--text-secondary); border-radius:var(--radius-sm); padding:5px 14px; font-size:13px; font-weight:600; cursor:pointer; white-space:nowrap; -webkit-tap-highlight-color:transparent; }
+    .ct-hide-btn:active { opacity:.7; }
+    .ct-hide-btn:disabled { opacity:.5; cursor:default; }
+    .ct-hidden-toggle { margin-top:8px; padding:5px 12px; border:1.5px solid var(--border); border-radius:20px; background:var(--bg-card); font-size:12px; font-weight:600; color:var(--text-secondary); cursor:pointer; white-space:nowrap; }
+    .ct-hidden-toggle.active { border-color:var(--primary); color:var(--primary); background:#e8f5e9; }
+    .ct-hidden-toggle:active { opacity:.7; }
+    .ct-badge-hidden { font-size:11px; font-weight:600; color:var(--text-secondary); background:var(--border-light); padding:2px 8px; border-radius:10px; margin-left:6px; }
+    .ct-card-hidden { opacity:.6; }
+    .ct-edit-form { padding:14px 16px; display:flex; flex-direction:column; gap:14px; border-bottom:1px solid var(--border-light); }
+    .ct-edit-row { display:flex; flex-direction:column; gap:4px; }
+    .ct-edit-label { font-size:11px; color:var(--text-secondary); font-weight:600; }
+    .ct-edit-input { width:100%; box-sizing:border-box; padding:10px 12px; border:1px solid var(--border); border-radius:var(--radius-sm); font-size:14px; font-family:inherit; color:var(--text-primary); background:var(--bg); }
+    .ct-edit-input:focus { outline:none; border-color:var(--primary); }
+    .ct-edit-actions { display:flex; gap:10px; padding:16px; justify-content:flex-end; }
+    .ct-edit-actions .btn { width:auto; padding:10px 20px; margin-top:0; }
+
+    /* ── 売上タブ ── */
+    .sales-summary-row { display:flex; gap:10px; padding:4px 16px 12px; }
+    .sales-summary-card { flex:1; background:var(--bg-card); border:1px solid var(--border-light); border-radius:var(--radius); padding:12px 14px; box-shadow:var(--shadow-sm); }
+    .sales-summary-card.sales-summary-warn { background:#FFF3E0; border-color:#FFE0B2; }
+    .sales-summary-label { font-size:11px; color:var(--text-secondary); margin-bottom:4px; }
+    .sales-summary-value { font-size:19px; font-weight:700; color:var(--text-primary); }
+    .sales-summary-warn .sales-summary-value { color:#E65100; }
+    .sales-chart-wrap { padding:8px 16px 16px; background:var(--bg-card); border-bottom:1px solid var(--border-light); }
+    .sales-month-picker { display:flex; gap:6px; overflow-x:auto; padding:10px 16px; -webkit-overflow-scrolling:touch; }
+    .sales-month-pill { flex-shrink:0; padding:6px 14px; background:var(--bg); border:1.5px solid var(--border); border-radius:20px; font-size:13px; font-weight:600; color:var(--text-secondary); cursor:pointer; white-space:nowrap; }
+    .sales-month-pill.active { background:var(--primary); border-color:var(--primary); color:#fff; }
+    .sales-list { padding:0 16px 80px; display:flex; flex-direction:column; gap:10px; }
+    .sales-list-item { background:var(--bg-card); border:1px solid var(--border-light); border-radius:var(--radius); padding:12px 14px; box-shadow:var(--shadow-sm); }
+    .sales-list-main { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:4px; }
+    .sales-list-date { font-size:13px; font-weight:600; color:var(--text-primary); }
+    .sales-list-sub { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:8px; }
+    .sales-list-name { font-size:13px; font-weight:600; color:var(--text-primary); }
+    .sales-list-menu { font-size:12px; color:var(--text-secondary); }
+    .sales-list-price-row { display:flex; align-items:center; gap:8px; }
+    .sales-price { font-size:15px; font-weight:700; color:var(--text-primary); }
+    .price-badge { font-size:10px; font-weight:600; padding:1px 7px; border-radius:10px; white-space:nowrap; }
+    .price-badge-auto { background:#E8F5E9; color:#2E7D32; }
+    .price-badge-manual { background:#E3F2FD; color:#1565C0; }
+    .payment-badge { font-size:10px; font-weight:600; padding:1px 7px; border-radius:10px; white-space:nowrap; background:#F3E5F5; color:#6A1B9A; }
+    .price-missing { font-size:13px; font-weight:600; color:#C62828; }
+    .sales-edit-btn { margin-left:auto; background:none; border:1px solid var(--primary); color:var(--primary); border-radius:var(--radius-sm); padding:4px 12px; font-size:12px; font-weight:600; cursor:pointer; -webkit-tap-highlight-color:transparent; }
+    .sales-edit-btn:active { opacity:.7; }
+    .ct-history-price-row { display:flex; align-items:center; gap:8px; margin-bottom:10px; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div class="loading-screen">
+      <div class="loading-logo">trunk</div>
+      <div class="spinner"></div>
+    </div>
+  </div>
+  <!-- 売上タブのグラフ表示用 -->
+  <script src="app.js"></script>
+</body>
+</html>

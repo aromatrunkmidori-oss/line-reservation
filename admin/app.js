@@ -1895,6 +1895,7 @@ async function loadFutureReservations() {
   try {
     const result = await apiGet({ action: 'getFutureReservations' });
     state.futureReservations = Array.isArray(result) ? result : [];
+    _writeResCache(state.futureReservations);
   } catch(err) {
     state.futureReservations = [];
   }
@@ -2785,8 +2786,29 @@ function _paymentBadgeHtml(method) {
 }
 
 // Chart.js は再描画のたびに canvas が作り直されるため、既存インスタンスを破棄してから再生成する
+// Chart.js は売上タブでしか使わないため、初回表示時に読み込む
+const CHART_JS_URL = 'https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js';
+let _chartJsPromise = null;
+function _loadChartJs() {
+  if (!_chartJsPromise) {
+    _chartJsPromise = new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src     = CHART_JS_URL;
+      s.onload  = resolve;
+      s.onerror = () => { _chartJsPromise = null; reject(new Error('Chart.js load failed')); };
+      document.head.appendChild(s);
+    });
+  }
+  return _chartJsPromise;
+}
+
 function _renderSalesCharts() {
-  if (typeof Chart === 'undefined') return;
+  if (typeof Chart === 'undefined') {
+    _loadChartJs()
+      .then(() => { if (!_reschedule && state.tab === 'sales') _renderSalesCharts(); })
+      .catch(() => {});
+    return;
+  }
 
   const s = state.sales;
   const monthlyCanvas = document.getElementById('sales-monthly-chart');
@@ -2960,8 +2982,31 @@ async function submitPriceEdit(reservationId) {
 // ============================================================
 // 初期化
 // ============================================================
+// 予約一覧の端末キャッシュ。オーナー認証が通った端末にしか書き込まれない
+const RES_CACHE_KEY = 'trunkAdminFutureReservations';
+function _readResCache() {
+  try {
+    const list = JSON.parse(localStorage.getItem(RES_CACHE_KEY));
+    return Array.isArray(list) ? list.filter(r => r.date >= todayStr()) : null;
+  } catch(e) { return null; }
+}
+function _writeResCache(list) {
+  try { localStorage.setItem(RES_CACHE_KEY, JSON.stringify(list)); } catch(e) {}
+}
+function _clearResCache() {
+  try { localStorage.removeItem(RES_CACHE_KEY); } catch(e) {}
+}
+
 async function initApp() {
-  renderLoading();
+  // 前回の一覧を先に表示し、GASの応答（コールドスタート含む）を待つ間も操作できるようにする
+  const cached = _readResCache();
+  if (cached) {
+    state.futureReservations = cached;
+    state.phase = 'main';
+    renderMain();
+  } else {
+    renderLoading();
+  }
   try {
     await liff.init({ liffId: ADMIN_CONFIG.LIFF_ID });
     if (!liff.isLoggedIn()) { liff.login(); return; }
@@ -2969,15 +3014,23 @@ async function initApp() {
     const profile    = await liff.getProfile();
     state.lineUserId = profile.userId;
 
-    const authResult = await apiGet({ action: 'checkOwner', lineUserId: state.lineUserId });
-    if (!authResult.isOwner) { renderAuthError(); return; }
+    const result = await apiGet({ action: 'adminInit', lineUserId: state.lineUserId });
+    if (!result.isOwner) { _clearResCache(); state.phase = 'auth'; renderAuthError(); return; }
 
-    const reservations = await apiGet({ action: 'getFutureReservations' });
-    state.futureReservations = Array.isArray(reservations) ? reservations : [];
-    state.phase = 'main';
-    renderMain();
+    state.futureReservations = Array.isArray(result.reservations) ? result.reservations : [];
+    _writeResCache(state.futureReservations);
+    if (state.phase !== 'main') {
+      state.phase = 'main';
+      renderMain();
+    } else if (state.tab === 'reservations' && !_reschedule) {
+      renderContent();
+    }
 
   } catch(err) {
+    if (state.phase === 'main') {
+      showToast('最新の予約を取得できませんでした: ' + err.message, true);
+      return;
+    }
     document.getElementById('app').innerHTML = `
       <div class="loading-screen">
         <div class="loading-logo">trunk</div>
